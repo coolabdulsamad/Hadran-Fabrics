@@ -1,0 +1,189 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600&family=Inter:wght@300;400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  HADRAN FABRICS MALL — Brand Theme
+  Extracted from the official invitation card:
+  - Deep Navy  (card typography / mall facade lettering)
+  - Royal Gold (ornaments, frames, flourishes)
+  - Ivory Cream (silk fabric background)
+*/
+
+@layer base {
+  :root {
+    --background: 44 45% 97%;
+    --foreground: 222 47% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 14%;
+    --primary: 222 46% 20%;
+    --primary-foreground: 45 60% 94%;
+    --secondary: 45 48% 92%;
+    --secondary-foreground: 222 46% 20%;
+    --muted: 44 30% 93%;
+    --muted-foreground: 222 15% 42%;
+    --accent: 45 68% 47%;
+    --accent-foreground: 222 47% 12%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 40 25% 86%;
+    --input: 40 25% 84%;
+    --ring: 45 68% 47%;
+    --radius: 0.625rem;
+    --sidebar-background: 222 46% 16%;
+    --sidebar-foreground: 44 40% 88%;
+    --sidebar-primary: 45 68% 47%;
+    --sidebar-primary-foreground: 222 47% 12%;
+    --sidebar-accent: 222 40% 22%;
+    --sidebar-accent-foreground: 45 60% 92%;
+    --sidebar-border: 222 35% 24%;
+    --sidebar-ring: 45 68% 47%;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 44 45% 92%;
+    --card: 222 42% 11%;
+    --card-foreground: 44 45% 92%;
+    --popover: 222 42% 11%;
+    --popover-foreground: 44 45% 92%;
+    --primary: 45 68% 50%;
+    --primary-foreground: 222 47% 10%;
+    --secondary: 222 35% 16%;
+    --secondary-foreground: 44 45% 92%;
+    --muted: 222 32% 15%;
+    --muted-foreground: 220 15% 62%;
+    --accent: 45 68% 50%;
+    --accent-foreground: 222 47% 10%;
+    --destructive: 0 62% 42%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 222 28% 20%;
+    --input: 222 28% 22%;
+    --ring: 45 68% 50%;
+    --sidebar-background: 222 50% 10%;
+    --sidebar-foreground: 44 35% 85%;
+    --sidebar-primary: 45 68% 50%;
+    --sidebar-primary-foreground: 222 47% 10%;
+    --sidebar-accent: 222 38% 18%;
+    --sidebar-accent-foreground: 44 50% 90%;
+    --sidebar-border: 222 32% 20%;
+    --sidebar-ring: 45 68% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  h1, h2, h3, h4 {
+    font-family: "Playfair Display", Georgia, serif;
+  }
+}
+
+@layer components {
+  /* Luxury gold divider used across headers (mirrors the card ornaments) */
+  .gold-divider {
+    @apply relative h-px w-full bg-gradient-to-r from-transparent via-gold-500 to-transparent;
+  }
+  .gold-divider::after {
+    content: "◆";
+    @apply absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-[10px] text-gold-500;
+  }
+  .card-lux {
+    @apply rounded-xl border border-border bg-card shadow-[0_1px_3px_rgba(20,27,45,0.06),0_8px_24px_-12px_rgba(20,27,45,0.12)];
+  }
+  .card-lux-gold {
+    @apply card-lux border-gold-500/30;
+  }
+  .input-lux {
+    @apply h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition focus:border-gold-500 focus:ring-2 focus:ring-gold-500/25;
+  }
+}
+
+@layer utilities {
+  .text-gold-gradient {
+    @apply bg-gradient-to-r from-gold-600 via-gold-400 to-gold-600 bg-clip-text text-transparent;
+  }
+  .scrollbar-lux::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-lux::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-lux::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-gold-500/40;
+  }
+  .scrollbar-lux::-webkit-scrollbar-thumb:hover {
+    @apply bg-gold-500/70;
+  }
+}
+
+/*
+  Thermal receipt (80mm) print styles — used by the POS receipt printer.
+  Screen shows a preview; @media print strips everything except the receipt.
+
+  Print strategy: printable content is mounted into a dedicated top-level
+  #print-root element (see PrintPortal). When it has content, every other
+  direct child of <body> is display:none'd — deterministic, no visibility
+  or transform clipping issues. Legacy .receipt-print-area is kept as a
+  fallback for any in-page print content.
+*/
+.receipt-80mm {
+  width: 80mm;
+  font-family: "Inter", monospace;
+  font-size: 12px;
+  color: #000;
+  background: #fff;
+}
+
+/* Screen: #print-root is invisible and takes no space. */
+#print-root {
+  position: absolute;
+  left: -99999px;
+  top: 0;
+  width: 80mm;
+}
+
+@media print {
+  /* Only the print root prints — everything else is fully removed. */
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+  #print-root {
+    position: static !important;
+    left: auto !important;
+    width: auto;
+  }
+  #print-root .print-receipt {
+    page: receipt;
+  }
+  /* Fallback for any legacy in-page .receipt-print-area content. */
+  body:not(:has(#print-root > *)) * {
+    visibility: hidden;
+  }
+  body:not(:has(#print-root > *)) .receipt-print-area,
+  body:not(:has(#print-root > *)) .receipt-print-area * {
+    visibility: visible;
+  }
+  body:not(:has(#print-root > *)) .receipt-print-area {
+    position: absolute;
+    inset: 0 auto auto 0;
+    margin: 0;
+    padding: 0;
+  }
+  @page receipt {
+    size: 80mm auto;
+    margin: 2mm;
+  }
+  @page {
+    margin: 10mm;
+  }
+}
