@@ -4,7 +4,12 @@ dist
 *.swp
 *.log
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 uploads
 >>>>>>> 546d334 (Add Docker deployment config)
+=======
+
+uploads
+>>>>>>> 0b9da5b (Remove unused APP_ID/APP_SECRET env requirements)
