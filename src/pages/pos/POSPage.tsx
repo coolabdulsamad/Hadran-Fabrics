@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { CartLine, CheckoutPayment } from "@contracts/pos";
 import { computeTotals } from "@/store/cart-store";
+import { formatCurrency } from "@/lib/format";
 
 /**
  * HADRAN FABRICS MALL — POS Terminal (Phase 5).
@@ -271,9 +272,31 @@ export default function POSPage() {
   };
 
   const cartSubtotal = totals.subtotal;
+  const itemCount = useMemo(() => lines.reduce((n, l) => n + l.quantity, 0), [lines]);
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
+
+  const cartPanelProps = {
+    config,
+    canItemDiscount: can("pos.apply_item_discount"),
+    canCartDiscount: can("pos.apply_cart_discount"),
+    canHold: can("pos.hold_sale"),
+    onItemDiscount: (line: CartLine) => {
+      setDiscountLine(line);
+      setItemDiscountOpen(true);
+    },
+    onCartDiscount: () => setCartDiscountOpen(true),
+    onCustomerClick: () => setCustomerOpen(true),
+    onHold: () => void handleHold(),
+    onCharge: () => {
+      setMobileCartOpen(false);
+      setPaymentOpen(true);
+    },
+    holding,
+    charging: checkoutMutation.isPending,
+  };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col gap-3 p-3 md:p-4">
+    <div className="flex min-h-[calc(100vh-4rem)] w-full min-w-0 flex-col gap-3 lg:h-[calc(100vh-4rem)]">
       {/* Terminal header strip */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2">
@@ -290,7 +313,15 @@ export default function POSPage() {
             <WifiOff className="h-3 w-3" /> Scanner off (search only)
           </Badge>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {/* Mobile/tablet: cart toggle (inline cart only shows on lg+) */}
+          <Button
+            size="sm"
+            className="bg-gold-500 font-semibold text-navy-950 hover:bg-gold-600 lg:hidden"
+            onClick={() => setMobileCartOpen(true)}
+          >
+            Cart · {itemCount} · {formatCurrency(totals.grandTotal)}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setHeldOpen(true)}>
             <PauseCircle className="mr-1.5 h-4 w-4" />
             Held Sales
@@ -298,30 +329,37 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* Main split */}
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[1fr_400px]">
-        <div className="min-h-[300px]">
+      {/* Main split — minmax(0,1fr) + min-w-0 stops content forcing the page wider than the screen */}
+      <div className="grid w-full min-w-0 flex-1 gap-3 lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="min-w-0">
           <ProductSearchPanel onPick={pickProduct} inCartIds={inCartIds} />
         </div>
-        <div className="min-h-[420px]">
-          <CartPanel
-            config={config}
-            canItemDiscount={can("pos.apply_item_discount")}
-            canCartDiscount={can("pos.apply_cart_discount")}
-            canHold={can("pos.hold_sale")}
-            onItemDiscount={(line) => {
-              setDiscountLine(line);
-              setItemDiscountOpen(true);
-            }}
-            onCartDiscount={() => setCartDiscountOpen(true)}
-            onCustomerClick={() => setCustomerOpen(true)}
-            onHold={() => void handleHold()}
-            onCharge={() => setPaymentOpen(true)}
-            holding={holding}
-            charging={checkoutMutation.isPending}
-          />
+        <div className="hidden min-h-0 min-w-0 lg:block">
+          <CartPanel {...cartPanelProps} />
         </div>
       </div>
+
+      {/* Mobile cart drawer (< lg) */}
+      {mobileCartOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-navy-950/60"
+            onClick={() => setMobileCartOpen(false)}
+            aria-hidden
+          />
+          <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-cream-100 p-3 shadow-2xl">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <h2 className="font-display text-lg font-semibold text-navy-900">Current Sale</h2>
+              <Button variant="outline" size="sm" onClick={() => setMobileCartOpen(false)}>
+                Close
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <CartPanel {...cartPanelProps} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Dialogs */}
       <MeasurementInput

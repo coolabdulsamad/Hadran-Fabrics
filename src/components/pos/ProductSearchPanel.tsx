@@ -110,7 +110,7 @@ export function ProductSearchPanel({ onPick, inCartIds }: ProductSearchPanelProp
       {/* Grid */}
       <div className="scrollbar-lux min-h-0 flex-1 overflow-y-auto pr-1">
         {productsQuery.isLoading ? (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-40 rounded-xl" />
             ))}
@@ -121,7 +121,7 @@ export function ProductSearchPanel({ onPick, inCartIds }: ProductSearchPanelProp
             <p className="text-sm">No products match your search.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-4">
             {items.map((p) => {
               const out = p.currentStock <= 0;
               const low = !out && p.currentStock <= p.reorderLevel;
