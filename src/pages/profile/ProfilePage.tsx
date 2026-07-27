@@ -88,6 +88,13 @@ export default function ProfilePage() {
     <div>
       <PageHeader title="My Profile" description="Your account details, today's activity and security settings." />
 
+      {/* Activity KPIs — full width so every amount always fits */}
+      <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard icon={ReceiptText} label="Sales today" value={String(activity?.todaySales ?? "—")} />
+        <StatCard icon={Banknote} label="Revenue today" value={activity ? formatCurrency(activity.todayRevenue) : "—"} tone="gold" />
+        <StatCard icon={LogIn} label="Total logins" value={String(activity?.totalLogins ?? "—")} />
+      </div>
+
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         {/* Identity card */}
         <div className="space-y-5">
@@ -104,12 +111,6 @@ export default function ProfilePage() {
               <InfoRow icon={CalendarDays} label="Member since" value={formatDate(new Date(user.createdAt))} />
               <InfoRow icon={LogIn} label="Last login" value={user.lastLoginAt ? timeAgo(new Date(user.lastLoginAt)) : "—"} />
             </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <StatCard icon={ReceiptText} label="Sales today" value={String(activity?.todaySales ?? "—")} />
-            <StatCard icon={Banknote} label="Revenue today" value={activity ? formatCurrency(activity.todayRevenue) : "—"} tone="gold" />
-            <StatCard icon={LogIn} label="Total logins" value={String(activity?.totalLogins ?? "—")} />
           </div>
         </div>
 

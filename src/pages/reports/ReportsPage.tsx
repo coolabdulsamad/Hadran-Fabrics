@@ -114,12 +114,12 @@ export default function ReportsPage() {
               const max = productsQuery.data?.[0]?.revenue ?? 1;
               return (
                 <li key={p.productId}>
-                  <div className="mb-1 flex items-center justify-between text-sm">
-                    <span className="flex min-w-0 items-center gap-2">
+                  <div className="mb-1 flex min-w-0 items-center justify-between gap-2 text-sm">
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-navy-900 font-display text-[10px] font-bold text-gold-400">
                         {i + 1}
                       </span>
-                      <span className="truncate font-medium">{p.name}</span>
+                      <span className="min-w-0 truncate font-medium">{p.name}</span>
                       <span className="shrink-0 text-[11px] text-muted-foreground">{formatQty(p.quantity)} sold</span>
                     </span>
                     <span className="shrink-0 font-semibold tabular-nums">{formatCurrency(p.revenue)}</span>
@@ -140,17 +140,17 @@ export default function ReportsPage() {
               const max = cashiersQuery.data?.[0]?.revenue ?? 1;
               return (
                 <li key={c.cashierId}>
-                  <div className="mb-1 flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2">
+                  <div className="mb-1 flex min-w-0 items-center justify-between gap-2 text-sm">
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gold-500 font-display text-[10px] font-bold text-navy-950">
                         {i + 1}
                       </span>
-                      <span className="font-medium">{c.name}</span>
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="min-w-0 truncate font-medium">{c.name}</span>
+                      <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
                         {c.orders} orders · avg {formatCurrency(c.averageTicket)}
                       </span>
                     </span>
-                    <span className="font-semibold tabular-nums">{formatCurrency(c.revenue)}</span>
+                    <span className="shrink-0 font-semibold tabular-nums">{formatCurrency(c.revenue)}</span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-navy-900/10">
                     <div className="h-full rounded-full bg-navy-800" style={{ width: `${(c.revenue / max) * 100}%` }} />
