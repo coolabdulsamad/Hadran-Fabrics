@@ -117,23 +117,21 @@ export default function ProfilePage() {
         {/* Edit + security */}
         <div className="space-y-5 xl:col-span-2">
           <FormSection icon={UserRound} title="Profile details" description="Your name appears on receipts, sales records and the audit trail.">
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <Field label="Full name" required hint="Shown across the whole system">
-                <Input value={fullName} onChange={(e) => { setFullName(e.target.value); markDirty(); }} />
-              </Field>
-              <Field label="Username" hint="Usernames can only be changed by an administrator">
-                <Input value={user.username} disabled />
-              </Field>
-              <Field label="Email">
-                <Input type="email" placeholder="you@example.com" value={email}
-                  onChange={(e) => { setEmail(e.target.value); markDirty(); }} />
-              </Field>
-              <Field label="Phone">
-                <Input placeholder="+234 …" value={phone}
-                  onChange={(e) => { setPhone(e.target.value); markDirty(); }} />
-              </Field>
-            </div>
-            <div className="mt-5 flex justify-end">
+            <Field label="Full name" required hint="Shown across the whole system">
+              <Input value={fullName} onChange={(e) => { setFullName(e.target.value); markDirty(); }} />
+            </Field>
+            <Field label="Username" hint="Usernames can only be changed by an administrator">
+              <Input value={user.username} disabled />
+            </Field>
+            <Field label="Email">
+              <Input type="email" placeholder="you@example.com" value={email}
+                onChange={(e) => { setEmail(e.target.value); markDirty(); }} />
+            </Field>
+            <Field label="Phone">
+              <Input placeholder="+234 …" value={phone}
+                onChange={(e) => { setPhone(e.target.value); markDirty(); }} />
+            </Field>
+            <div className="flex justify-end md:col-span-2">
               <Button onClick={saveProfile} disabled={!profileDirty || fullName.trim().length < 3 || updateMut.isPending}>
                 {updateMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
                 Save changes
@@ -142,35 +140,33 @@ export default function ProfilePage() {
           </FormSection>
 
           <FormSection icon={KeyRound} title="Change password" description="You will be logged out of all devices after changing your password.">
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-              <Field label="Current password" required>
-                <Input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} autoComplete="current-password" />
-              </Field>
-              <Field label="New password" required hint="Min 8 chars, with a letter and a number">
-                <div className="relative">
-                  <Input type={showPw ? "text" : "password"} value={newPw} onChange={(e) => setNewPw(e.target.value)}
-                    autoComplete="new-password" className="pr-9" />
-                  <button type="button" onClick={() => setShowPw((s) => !s)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                    {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </Field>
-              <Field label="Confirm new password" required
-                error={confirmPw && confirmPw !== newPw ? "Passwords do not match" : undefined}>
-                <Input type={showPw ? "text" : "password"} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)}
-                  autoComplete="new-password" />
-              </Field>
-            </div>
+            <Field label="Current password" required>
+              <Input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} autoComplete="current-password" />
+            </Field>
+            <Field label="New password" required hint="Min 8 chars, with a letter and a number">
+              <div className="relative">
+                <Input type={showPw ? "text" : "password"} value={newPw} onChange={(e) => setNewPw(e.target.value)}
+                  autoComplete="new-password" className="pr-9" />
+                <button type="button" onClick={() => setShowPw((s) => !s)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </Field>
+            <Field label="Confirm new password" required
+              error={confirmPw && confirmPw !== newPw ? "Passwords do not match" : undefined}>
+              <Input type={showPw ? "text" : "password"} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)}
+                autoComplete="new-password" />
+            </Field>
             {newPw.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2 self-end">
                 <PwRule ok={newPw.length >= 8} label="8+ characters" />
                 <PwRule ok={/[a-zA-Z]/.test(newPw)} label="Has a letter" />
                 <PwRule ok={/\d/.test(newPw)} label="Has a number" />
                 <PwRule ok={confirmPw === newPw && confirmPw.length > 0} label="Matches confirmation" />
               </div>
             )}
-            <div className="mt-5 flex justify-end">
+            <div className="flex justify-end md:col-span-2">
               <Button variant="outline" onClick={changePw} disabled={!pwValid || pwMut.isPending}>
                 {pwMut.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1.5 h-4 w-4" />}
                 Change password
@@ -203,10 +199,10 @@ export default function ProfilePage() {
 
 function InfoRow({ icon: Icon, label, value }: { icon: typeof Mail; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <div className="flex items-start gap-2.5" title={`${label}: ${value}`}>
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
       <span className="w-24 shrink-0 text-xs text-muted-foreground">{label}</span>
-      <span className="truncate font-medium">{value}</span>
+      <span className="min-w-0 flex-1 break-all text-right font-medium sm:text-left">{value}</span>
     </div>
   );
 }
