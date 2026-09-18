@@ -1,8 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
-import { saleItems, sales } from "@db/schema";
+import { saleItems, salePayments, sales } from "@db/schema";
 import { recordMovement } from "./inventory.service";
+import { netPayments, recordMoneyMovement } from "./money.service";
 import { logAudit } from "./audit.service";
 
 /**
@@ -55,6 +56,31 @@ export async function voidSale(
       .update(sales)
       .set({ status: "VOIDED", voidedBy: actorId, voidReason: reason, voidedAt: new Date() })
       .where(eq(sales.id, saleId));
+
+    // money ledger — the refunded money leaves the drawer (one OUT per original payment leg)
+    const pays = await tx.select().from(salePayments).where(eq(salePayments.saleId, saleId));
+    const legs = netPayments(
+      pays.map((p) => ({ method: p.method, amount: Number(p.amount) })),
+      sale.grandTotal,
+      Number(sale.changeGiven ?? 0),
+    );
+    for (const leg of legs) {
+      await recordMoneyMovement(
+        {
+          direction: "OUT",
+          section: "SALES",
+          branchId: sale.branchId ?? null,
+          sourceType: "SALE_VOID_REVERSAL",
+          sourceId: saleId,
+          sourceRef: sale.receiptNo,
+          amount: leg.amount,
+          paymentMethod: leg.method,
+          note: `Void of sale ${sale.receiptNo} — ${reason}`,
+          createdBy: actorId,
+        },
+        tx,
+      );
+    }
   });
 
   await logAudit({
