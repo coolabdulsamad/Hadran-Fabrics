@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { customers, products, returnItems, returns, saleItems, sales } from "@db/schema";
 import { recordMovement, type Tx } from "./inventory.service";
+import { recordMoneyMovement } from "./money.service";
 import { logAudit } from "./audit.service";
 import type { PaymentMethod, ReturnCondition, ReturnType } from "@contracts/constants";
 
@@ -220,6 +221,42 @@ export async function processReturn(input: ProcessReturnInput): Promise<ProcessR
     const fullyReturned = allItems.every((i) => Number(i.returnedQty) >= Number(i.quantity));
     const saleStatus = fullyReturned ? "RETURNED" : "PARTIALLY_RETURNED";
     await tx.update(sales).set({ status: saleStatus }).where(eq(sales.id, sale.id));
+
+    /* ------------------------- money ledger --------------------------- */
+    if (refundAmount > 0) {
+      await recordMoneyMovement(
+        {
+          direction: "OUT",
+          section: "SALES",
+          branchId: sale.branchId ?? null,
+          sourceType: "RETURN_REFUND",
+          sourceId: ret.id,
+          sourceRef: reference,
+          amount: refundAmount,
+          paymentMethod: input.refundMethod ?? "CASH",
+          note: `Refund on ${sale.receiptNo} (${reference})`,
+          createdBy: input.actorId,
+        },
+        tx,
+      );
+    }
+    if (topUpAmount > 0) {
+      await recordMoneyMovement(
+        {
+          direction: "IN",
+          section: "SALES",
+          branchId: sale.branchId ?? null,
+          sourceType: "EXCHANGE_TOPUP",
+          sourceId: ret.id,
+          sourceRef: reference,
+          amount: topUpAmount,
+          paymentMethod: input.refundMethod ?? "CASH",
+          note: `Exchange top-up on ${sale.receiptNo} (${reference})`,
+          createdBy: input.actorId,
+        },
+        tx,
+      );
+    }
 
     /* -------------------- customer stats reversal --------------------- */
     if (sale.customerId && refundAmount > 0) {
