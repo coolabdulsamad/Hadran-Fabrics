@@ -6,6 +6,7 @@ import { permissionProcedure } from "../trpc";
 import { getDb } from "../queries/connection";
 import { products, purchaseItems, purchases, suppliers, users } from "@db/schema";
 import { recordMovement } from "../services/inventory.service";
+import { recordMoneyMovement } from "../services/money.service";
 import { logAudit, requestMeta } from "../services/audit.service";
 import { UNITS } from "@contracts/constants";
 
@@ -192,6 +193,26 @@ export const purchasesRouter = createRouter({
           .update(purchaseItems)
           .set({ receivedQty: Number((item.receivedQty + receipt.quantity).toFixed(3)) })
           .where(eq(purchaseItems.id, item.id));
+      }
+
+      // money ledger — goods received = money out to the supplier
+      const receivedValue = input.receipts.reduce((sum, receipt) => {
+        const item = items.find((i) => i.id === receipt.itemId);
+        return item ? sum + receipt.quantity * item.unitCost : sum;
+      }, 0);
+      if (receivedValue > 0) {
+        await recordMoneyMovement({
+          direction: "OUT",
+          section: "SALES",
+          branchId: po.branchId ?? null,
+          sourceType: "PURCHASE",
+          sourceId: po.id,
+          sourceRef: po.reference,
+          amount: Number(receivedValue.toFixed(2)),
+          paymentMethod: "OTHER",
+          note: `Stock received on ${po.reference} (supplier payment)`,
+          createdBy: ctx.user.id,
+        });
       }
 
       // Recompute PO status
