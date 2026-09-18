@@ -232,6 +232,28 @@ export async function applyApproval(
       };
     }
 
+    /* ------------------------------ EXPENSES ------------------------------ */
+    case "EXPENSE_RECORD": {
+      const { applyExpenseRecord } = await import("./expenses.service");
+      const amount = num(payload.amount);
+      if (amount <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Expense amount must be greater than zero." });
+      const result = await applyExpenseRecord(
+        {
+          section: str(payload.section, "SALES") as never,
+          category: str(payload.category, "OTHER") as never,
+          description: str(payload.description).trim(),
+          vendor: strOrNull(payload.vendor),
+          amount,
+          paymentMethod: str(payload.paymentMethod, "CASH") as never,
+          expenseDate: str(payload.expenseDate) || new Date().toISOString().slice(0, 10),
+          notes: strOrNull(payload.notes),
+        },
+        num(payload.requestedBy) || reviewer.id, // record under the manager who asked
+        payload.branchId ? num(payload.branchId) : null,
+      );
+      return { description: `Expense ${result.refNo} recorded — ₦${amount.toLocaleString()}.`, entityId: result.expenseId };
+    }
+
     default:
       throw new TRPCError({ code: "BAD_REQUEST", message: `No applier for request type ${requestType}.` });
   }
