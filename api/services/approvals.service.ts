@@ -39,6 +39,7 @@ export async function getWorkflowSettings(): Promise<WorkflowSettings> {
       "VOID_SALE",
       "RETURN_PROCESS",
       "CUSTOMER_DISCOUNT",
+      "EXPENSE_RECORD",
     ]),
     readJsonSetting("workflow.auto_approve_admin", true),
   ]);

@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { and, eq, gt } from "drizzle-orm";
 import { getDb } from "../queries/connection";
-import { rolePermissions, sessions, settings, userPermissions, users } from "@db/schema";
+import { branches, rolePermissions, sessions, settings, userPermissions, users } from "@db/schema";
 import { PERMISSION_KEYS } from "@contracts/permissions";
 import type { UserRole } from "@contracts/roles";
 
@@ -43,6 +43,9 @@ export interface SessionUser {
   status: "ACTIVE" | "SUSPENDED";
   avatarUrl: string | null;
   staffCode: string | null;
+  branchId: number | null;
+  branchName: string | null;
+  branchCode: string | null;
   createdAt: Date;
   lastLoginAt: Date | null;
 }
@@ -126,9 +129,10 @@ export async function login(username: string, password: string): Promise<AuthRes
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
 
   const permissions = await getEffectivePermissions(user.id, user.role as UserRole);
+  const branch = await branchForUser(user.branchId ?? null);
 
   return {
-    user: toSessionUser(user),
+    user: toSessionUser(user, branch),
     permissions,
     sessionToken,
     expiresAt,
@@ -155,7 +159,8 @@ export async function resolveSession(
   if (row.user.status !== "ACTIVE") return null;
 
   const permissions = await getEffectivePermissions(row.user.id, row.user.role as UserRole);
-  return { user: toSessionUser(row.user), permissions, sessionId: row.session.id };
+  const branch = await branchForUser(row.user.branchId ?? null);
+  return { user: toSessionUser(row.user, branch), permissions, sessionId: row.session.id };
 }
 
 /** Close a session (logout). */
@@ -233,7 +238,10 @@ export function clearSessionCookieHeader(): string {
 
 /* ------------------------------------------------------------------ */
 
-function toSessionUser(u: typeof users.$inferSelect): SessionUser {
+function toSessionUser(
+  u: typeof users.$inferSelect,
+  branch?: { id: number; name: string; code: string } | null,
+): SessionUser {
   return {
     id: u.id,
     username: u.username,
@@ -244,7 +252,22 @@ function toSessionUser(u: typeof users.$inferSelect): SessionUser {
     status: u.status,
     avatarUrl: u.avatarUrl,
     staffCode: u.staffCode,
+    branchId: u.branchId ?? null,
+    branchName: branch?.name ?? null,
+    branchCode: branch?.code ?? null,
     createdAt: u.createdAt,
     lastLoginAt: u.lastLoginAt,
   };
+}
+
+/** Fetch the branch a staff member belongs to (null when unassigned). */
+async function branchForUser(branchId: number | null) {
+  if (!branchId) return null;
+  const db = getDb();
+  const rows = await db
+    .select({ id: branches.id, name: branches.name, code: branches.code })
+    .from(branches)
+    .where(eq(branches.id, branchId))
+    .limit(1);
+  return rows[0] ?? null;
 }
