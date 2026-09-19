@@ -316,7 +316,7 @@ export default function LaundryNewOrderPage() {
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="font-semibold text-navy-900">{formatCurrency(subtotal)}</span></div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-muted-foreground">Discount (₦)</span>
-              <Input type="number" min={0} step={0.01} value={discount} onChange={(e) => setDiscount(e.target.value)} className="h-8 w-32 text-right" placeholder="0.00" />
+              <Input type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} className="h-8 w-32 text-right" placeholder="0.00" />
             </div>
             <div className="flex justify-between border-t border-border pt-2 text-base">
               <span className="font-semibold text-navy-900">Total</span>
