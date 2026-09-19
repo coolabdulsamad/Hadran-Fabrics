@@ -13,6 +13,12 @@ import LoginPage from "./pages/auth/LoginPage";
 import DashboardPage from "./pages/dashboard/DashboardPage";
 import SectionPickerPage from "./pages/sections/SectionPickerPage";
 import LaundryHomePage from "./pages/laundry/LaundryHomePage";
+import LaundryOrdersPage from "./pages/laundry/LaundryOrdersPage";
+import LaundryNewOrderPage from "./pages/laundry/LaundryNewOrderPage";
+import LaundryOrderDetailPage from "./pages/laundry/LaundryOrderDetailPage";
+import LaundryPaymentsPage from "./pages/laundry/LaundryPaymentsPage";
+import LaundryCustomersPage from "./pages/laundry/LaundryCustomersPage";
+import LaundryReportsPage from "./pages/laundry/LaundryReportsPage";
 import TailoringHomePage from "./pages/tailoring/TailoringHomePage";
 import ExpensesPage from "./pages/expenses/ExpensesPage";
 import MoneyPage from "./pages/money/MoneyPage";
@@ -357,7 +363,7 @@ export default function App() {
             }
           />
 
-          {/* ======== LAUNDRY SECTION — home live, modules in Phase 4 ======== */}
+          {/* ======== LAUNDRY SECTION — Phase 4 live ======== */}
           <Route
             path="/laundry"
             element={
@@ -373,7 +379,7 @@ export default function App() {
             element={
               <RequireSection section="LAUNDRY">
                 <RequirePermission permission="laundry.manage">
-                  <ModulePlaceholder title="New Laundry Order" phase={4} icon={PlusCircle} backTo="/laundry" backLabel="Back to Laundry Home" description="Receive garments, price each service line, capture deposits and print the order ticket — all from one screen." />
+                  <LaundryNewOrderPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -383,7 +389,17 @@ export default function App() {
             element={
               <RequireSection section="LAUNDRY">
                 <RequirePermission permission="laundry.view">
-                  <ModulePlaceholder title="Laundry Orders" phase={4} icon={ClipboardList} backTo="/laundry" backLabel="Back to Laundry Home" description="Every order tracked from received → washing → drying → ironing → ready → collected, with due dates and priority." />
+                  <LaundryOrdersPage />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/laundry/orders/:id"
+            element={
+              <RequireSection section="LAUNDRY">
+                <RequirePermission permission="laundry.view">
+                  <LaundryOrderDetailPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -393,7 +409,7 @@ export default function App() {
             element={
               <RequireSection section="LAUNDRY">
                 <RequirePermission permission="laundry.view">
-                  <ModulePlaceholder title="Laundry Payments" phase={4} icon={CreditCard} backTo="/laundry" backLabel="Back to Laundry Home" description="Deposits, balance collections and receipts for laundry orders — fully tied into the money ledger." />
+                  <LaundryPaymentsPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -403,7 +419,7 @@ export default function App() {
             element={
               <RequireSection section="LAUNDRY">
                 <RequirePermission permission="laundry.view">
-                  <ModulePlaceholder title="Laundry Customers" phase={4} icon={Users} backTo="/laundry" backLabel="Back to Laundry Home" description="Laundry customer records, contact details and full order history per customer." />
+                  <LaundryCustomersPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -413,7 +429,7 @@ export default function App() {
             element={
               <RequireSection section="LAUNDRY">
                 <RequirePermission permission="laundry.view">
-                  <ModulePlaceholder title="Laundry Reports" phase={4} icon={FileBarChart} backTo="/laundry" backLabel="Back to Laundry Home" description="Section reports: orders by status, revenue, staff performance, turnaround times and more — with export." />
+                  <LaundryReportsPage />
                 </RequirePermission>
               </RequireSection>
             }
