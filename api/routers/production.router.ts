@@ -1,0 +1,251 @@
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { and, asc, count, desc, eq, gte, like, lte, or, sql, type SQL } from "drizzle-orm";
+import { createRouter } from "../middleware";
+import { permissionProcedure } from "../trpc";
+import { getDb } from "../queries/connection";
+import { productionOrders, productionMaterials, products, users } from "@db/schema";
+import {
+  cancelProductionRun,
+  completeProductionRun,
+  createProductionRun,
+  startProductionRun,
+} from "../services/production.service";
+import { logAudit, requestMeta } from "../services/audit.service";
+import { PRODUCTION_STATUSES, UNITS } from "@contracts/constants";
+
+/**
+ * HADRAN FABRICS MALL — production router
+ * In-house production runs: consume shop materials into new sellable
+ * products. Stock movements (PRODUCTION_OUT / PRODUCTION_IN) are written
+ * inside the service layer via recordMovement.
+ */
+
+const listInput = z.object({
+  status: z.enum(PRODUCTION_STATUSES).optional(),
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  search: z.string().max(120).optional(),
+  page: z.number().int().min(1).default(1),
+  pageSize: z.number().int().min(5).max(200).default(25),
+});
+
+function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">): SQL[] {
+  const filters: SQL[] = [];
+  if (input.status) filters.push(eq(productionOrders.status, input.status));
+  if (input.dateFrom) filters.push(gte(productionOrders.createdAt, new Date(`${input.dateFrom}T00:00:00`)));
+  if (input.dateTo) filters.push(lte(productionOrders.createdAt, new Date(`${input.dateTo}T23:59:59`)));
+  if (input.search?.trim()) {
+    const q = `%${input.search.trim()}%`;
+    filters.push(or(like(productionOrders.refNo, q), like(products.name, q))!);
+  }
+  return filters;
+}
+
+export const productionRouter = createRouter({
+  /* ------------------------------ SUMMARY ------------------------------ */
+
+  summary: permissionProcedure("production.view").query(async () => {
+    const db = getDb();
+    const statusRows = await db
+      .select({ status: productionOrders.status, count: count() })
+      .from(productionOrders)
+      .groupBy(productionOrders.status);
+    const board = Object.fromEntries(statusRows.map((r) => [r.status, r.count]));
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [monthRows] = await db.execute(sql`
+      SELECT COUNT(*) AS runs, COALESCE(SUM(${productionOrders.outputQty}), 0) AS units
+      FROM ${productionOrders}
+      WHERE ${productionOrders.status} = 'COMPLETED'
+        AND ${productionOrders.completedAt} >= ${monthStart}
+    `);
+    const month = (monthRows as unknown as { runs: string; units: string }[])[0];
+
+    return {
+      board,
+      completedThisMonth: Number(month?.runs ?? 0),
+      unitsThisMonth: Number(month?.units ?? 0),
+    };
+  }),
+
+  /* ------------------------------ LIST ------------------------------ */
+
+  list: permissionProcedure("production.view").input(listInput).query(async ({ input }) => {
+    const db = getDb();
+    const filters = buildFilters(input);
+    const where = filters.length ? and(...filters) : undefined;
+
+    const [totalRow] = await db
+      .select({ value: count() })
+      .from(productionOrders)
+      .leftJoin(products, eq(productionOrders.outputProductId, products.id))
+      .where(where);
+
+    const rows = await db
+      .select({
+        run: productionOrders,
+        outputProductName: products.name,
+        requestedByName: users.fullName,
+      })
+      .from(productionOrders)
+      .leftJoin(products, eq(productionOrders.outputProductId, products.id))
+      .leftJoin(users, eq(productionOrders.requestedBy, users.id))
+      .where(where)
+      .orderBy(desc(productionOrders.createdAt), desc(productionOrders.id))
+      .limit(input.pageSize)
+      .offset((input.page - 1) * input.pageSize);
+
+    const ids = rows.map((r) => r.run.id);
+    const materialCounts = ids.length
+      ? await db
+          .select({ productionId: productionMaterials.productionId, count: count() })
+          .from(productionMaterials)
+          .where(sql`${productionMaterials.productionId} IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`)
+          .groupBy(productionMaterials.productionId)
+      : [];
+    const countByRun = new Map(materialCounts.map((r) => [r.productionId, r.count]));
+
+    return {
+      rows: rows.map((r) => ({
+        ...r.run,
+        outputProductName: r.outputProductName,
+        requestedByName: r.requestedByName,
+        materialCount: countByRun.get(r.run.id) ?? 0,
+      })),
+      total: totalRow?.value ?? 0,
+      page: input.page,
+      pageSize: input.pageSize,
+    };
+  }),
+
+  /* ------------------------------ DETAIL ------------------------------ */
+
+  getById: permissionProcedure("production.view")
+    .input(z.object({ id: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = getDb();
+      const [row] = await db
+        .select({
+          run: productionOrders,
+          outputProductName: products.name,
+          outputProductSku: products.sku,
+          requestedByName: users.fullName,
+        })
+        .from(productionOrders)
+        .leftJoin(products, eq(productionOrders.outputProductId, products.id))
+        .leftJoin(users, eq(productionOrders.requestedBy, users.id))
+        .where(eq(productionOrders.id, input.id))
+        .limit(1);
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Production run not found." });
+
+      const materials = await db
+        .select({
+          material: productionMaterials,
+          currentStock: products.currentStock,
+        })
+        .from(productionMaterials)
+        .leftJoin(products, eq(productionMaterials.productId, products.id))
+        .where(eq(productionMaterials.productionId, input.id))
+        .orderBy(asc(productionMaterials.id));
+
+      let approvedByName: string | null = null;
+      if (row.run.approvedBy != null) {
+        const [approver] = await db
+          .select({ fullName: users.fullName })
+          .from(users)
+          .where(eq(users.id, row.run.approvedBy))
+          .limit(1);
+        approvedByName = approver?.fullName ?? null;
+      }
+
+      return {
+        ...row.run,
+        outputProductName: row.outputProductName,
+        outputProductSku: row.outputProductSku,
+        requestedByName: row.requestedByName,
+        approvedByName,
+        materials: materials.map((m) => ({ ...m.material, currentStock: m.currentStock })),
+      };
+    }),
+
+  /* ------------------------------ WRITES ------------------------------ */
+
+  create: permissionProcedure("production.manage")
+    .input(
+      z.object({
+        outputProductId: z.number().int().positive(),
+        outputQty: z.number().positive("Output quantity must be greater than zero"),
+        notes: z.string().max(2000).optional(),
+        materials: z
+          .array(
+            z.object({
+              productId: z.number().int().positive(),
+              quantity: z.number().positive("Material quantity must be greater than zero"),
+              unit: z.enum(UNITS).optional(),
+            }),
+          )
+          .min(1, "Add at least one material"),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const result = await createProductionRun(input, ctx.user.id, ctx.user.branchId ?? null);
+      await logAudit({
+        actorId: ctx.user.id,
+        action: "production.create",
+        entityType: "PRODUCTION_ORDER",
+        entityId: result.productionId,
+        description: `Created production run ${result.refNo} — ${input.outputQty} unit(s) of product #${input.outputProductId} from ${input.materials.length} material(s).`,
+        ...requestMeta(ctx.req),
+      });
+      return result;
+    }),
+
+  start: permissionProcedure("production.manage")
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await startProductionRun(input.id, ctx.user.id);
+      await logAudit({
+        actorId: ctx.user.id,
+        action: "production.start",
+        entityType: "PRODUCTION_ORDER",
+        entityId: input.id,
+        description: `Started production run #${input.id} — materials deducted from shop stock.`,
+        ...requestMeta(ctx.req),
+      });
+      return result;
+    }),
+
+  complete: permissionProcedure("production.manage")
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await completeProductionRun(input.id, ctx.user.id, ctx.user.id);
+      await logAudit({
+        actorId: ctx.user.id,
+        action: "production.complete",
+        entityType: "PRODUCTION_ORDER",
+        entityId: input.id,
+        description: `Completed production run #${input.id} — finished output booked into stock.`,
+        ...requestMeta(ctx.req),
+      });
+      return result;
+    }),
+
+  cancel: permissionProcedure("production.manage")
+    .input(z.object({ id: z.number().int().positive(), reason: z.string().min(3, "Give a reason").max(300) }))
+    .mutation(async ({ input, ctx }) => {
+      const result = await cancelProductionRun(input.id, input.reason.trim(), ctx.user.id);
+      await logAudit({
+        actorId: ctx.user.id,
+        action: "production.cancel",
+        entityType: "PRODUCTION_ORDER",
+        entityId: input.id,
+        description: `Cancelled production run #${input.id} (${result.materialsReturned} material line(s) returned to stock). Reason: ${input.reason}.`,
+        ...requestMeta(ctx.req),
+      });
+      return result;
+    }),
+});
