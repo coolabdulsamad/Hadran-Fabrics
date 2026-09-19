@@ -47,8 +47,8 @@ function buildFilters(input: z.infer<typeof listInput>): SQL[] {
   if (input.category) filters.push(eq(expenses.category, input.category));
   if (input.status) filters.push(eq(expenses.status, input.status));
   if (input.method) filters.push(eq(expenses.paymentMethod, input.method));
-  if (input.dateFrom) filters.push(gte(expenses.expenseDate, input.dateFrom));
-  if (input.dateTo) filters.push(lte(expenses.expenseDate, input.dateTo));
+  if (input.dateFrom) filters.push(gte(expenses.expenseDate, new Date(`${input.dateFrom}T00:00:00`)));
+  if (input.dateTo) filters.push(lte(expenses.expenseDate, new Date(`${input.dateTo}T23:59:59`)));
   if (input.search?.trim()) {
     const q = `%${input.search.trim()}%`;
     filters.push(or(like(expenses.refNo, q), like(expenses.description, q), like(expenses.vendor, q))!);
@@ -110,23 +110,23 @@ export const expensesRouter = createRouter({
     const [month] = await db
       .select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)`, count: count() })
       .from(expenses)
-      .where(and(active, gte(expenses.expenseDate, monthStartStr)));
+      .where(and(active, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))));
     const [today] = await db
       .select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)`, count: count() })
       .from(expenses)
-      .where(and(active, eq(expenses.expenseDate, todayStr)));
+      .where(and(active, eq(expenses.expenseDate, new Date(`${todayStr}T00:00:00`))));
 
     const byCategory = await db
       .select({ category: expenses.category, total: sql<string>`SUM(${expenses.amount})`, count: count() })
       .from(expenses)
-      .where(and(active, gte(expenses.expenseDate, monthStartStr)))
+      .where(and(active, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))))
       .groupBy(expenses.category)
       .orderBy(desc(sql`SUM(${expenses.amount})`));
 
     const bySection = await db
       .select({ section: expenses.section, total: sql<string>`SUM(${expenses.amount})`, count: count() })
       .from(expenses)
-      .where(and(active, gte(expenses.expenseDate, monthStartStr)))
+      .where(and(active, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))))
       .groupBy(expenses.section);
 
     return {

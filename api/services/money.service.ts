@@ -63,7 +63,7 @@ export async function recordMoneyMovement(input: MoneyMovementInput, tx?: Tx): P
  */
 export function netPayments<T extends { method: PaymentMethod; amount: number }>(
   payments: T[],
-  grandTotal: number,
+  _grandTotal: number,
   changeGiven: number,
 ): { method: PaymentMethod; amount: number }[] {
   if (changeGiven <= 0) return payments.map((p) => ({ method: p.method, amount: p.amount }));

@@ -44,7 +44,7 @@ export async function applyExpenseRecord(
         vendor: input.vendor?.trim() || null,
         amount: input.amount.toFixed(2),
         paymentMethod: input.paymentMethod,
-        expenseDate: input.expenseDate,
+        expenseDate: new Date(`${input.expenseDate}T00:00:00`),
         notes: input.notes?.trim() || null,
         status: "ACTIVE",
         recordedBy: actorId,
