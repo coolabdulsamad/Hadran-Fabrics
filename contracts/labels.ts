@@ -13,6 +13,9 @@ import type {
   MessageReferenceType,
   ExpenseCategory,
   MoneySourceType,
+  TailoringOrderStatus,
+  FabricSource,
+  ProductionStatus,
 } from "./constants";
 
 /** Human-readable labels for domain enums (shared frontend ↔ backend). */
@@ -94,6 +97,29 @@ export const REFERENCE_TYPE_LABELS: Record<MessageReferenceType, string> = {
   STOCK_MOVEMENT: "Stock Movement",
   CUSTOMER: "Customer",
   PURCHASE: "Purchase",
+};
+
+export const TAILORING_STATUS_LABELS: Record<TailoringOrderStatus, string> = {
+  RECEIVED: "Received",
+  CUTTING: "Cutting",
+  SEWING: "Sewing",
+  FINISHING: "Finishing",
+  FITTING: "Fitting",
+  READY: "Ready for Pickup",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
+};
+
+export const FABRIC_SOURCE_LABELS: Record<FabricSource, string> = {
+  CUSTOMER_OWN: "Customer's Own Fabric",
+  SHOP_STOCK: "Shop Stock",
+};
+
+export const PRODUCTION_STATUS_LABELS: Record<ProductionStatus, string> = {
+  DRAFT: "Draft",
+  IN_PROGRESS: "In Progress",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
 };
 
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {

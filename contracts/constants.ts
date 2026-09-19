@@ -276,6 +276,57 @@ export type TailoringOrderStatus = (typeof TAILORING_ORDER_STATUSES)[number];
 export const FABRIC_SOURCES = ["CUSTOMER_OWN", "SHOP_STOCK"] as const;
 export type FabricSource = (typeof FABRIC_SOURCES)[number];
 
+/** Workflow order for tailoring orders (excludes CANCELLED). */
+export const TAILORING_WORKFLOW = [
+  "RECEIVED",
+  "CUTTING",
+  "SEWING",
+  "FINISHING",
+  "FITTING",
+  "READY",
+  "DELIVERED",
+] as const;
+
+/** Terminal statuses — no further workflow moves allowed. */
+export const TAILORING_TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"] as const;
+
+/** Standard measurement fields captured on a tailoring order (values in inches). */
+export const MEASUREMENT_FIELDS = [
+  { key: "chest", label: "Chest / Bust" },
+  { key: "waist", label: "Waist" },
+  { key: "hips", label: "Hips" },
+  { key: "shoulder", label: "Shoulder" },
+  { key: "sleeve", label: "Sleeve Length" },
+  { key: "armhole", label: "Armhole" },
+  { key: "neck", label: "Neck" },
+  { key: "topLength", label: "Top / Shirt Length" },
+  { key: "trouserLength", label: "Trouser Length" },
+  { key: "thigh", label: "Thigh" },
+  { key: "knee", label: "Knee" },
+  { key: "ankle", label: "Ankle / Bottom" },
+  { key: "gownLength", label: "Gown / Agbada Length" },
+  { key: "capSize", label: "Cap Size" },
+] as const;
+
+/** Common style presets to speed up order entry. */
+export const TAILORING_STYLE_PRESETS = [
+  "Senator Suit",
+  "Agbada (3-piece)",
+  "Kaftan",
+  "Dashiki",
+  "Buba & Sokoto",
+  "Iro & Buba",
+  "Aso-Oke Gown",
+  "Two-Piece Suit",
+  "Shirt & Trouser",
+  "Native Top Only",
+  "Trouser Only",
+  "Gown / Dress",
+  "Skirt & Blouse",
+  "Children's Wear",
+  "Alteration / Adjustment",
+] as const;
+
 // ---------- Shared payment status (laundry/tailoring orders) ----------
 export const ORDER_PAYMENT_STATUSES = ["UNPAID", "PART_PAID", "PAID"] as const;
 export type OrderPaymentStatus = (typeof ORDER_PAYMENT_STATUSES)[number];
