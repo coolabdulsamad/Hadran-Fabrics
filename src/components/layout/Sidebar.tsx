@@ -1,6 +1,7 @@
 import { NavLink } from "react-router";
 import { Scissors, X, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useSection } from "@/hooks/use-section";
 import { visibleSections } from "@/config/navigation";
 import { APP_MOTTO } from "@/config/constants";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,8 @@ interface SidebarProps {
 /** Navy + gold sidebar. Nav items are filtered by the user's effective permissions. Collapsible on desktop. */
 export function Sidebar({ open, onClose, collapsed, onToggleCollapse }: SidebarProps) {
   const { permissions } = useAuth();
-  const sections = visibleSections(permissions);
+  const { section } = useSection();
+  const sections = visibleSections(permissions, section);
 
   const nav = (isCollapsed: boolean) => (
     <nav className="flex h-full flex-col">
