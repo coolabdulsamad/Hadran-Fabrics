@@ -13,6 +13,8 @@ import { moneyRouter } from "./routers/money.router";
 import { laundryRouter } from "./routers/laundry.router";
 import { tailoringRouter } from "./routers/tailoring.router";
 import { productionRouter } from "./routers/production.router";
+import { branchesRouter } from "./routers/branches.router";
+import { transfersRouter } from "./routers/transfers.router";
 import { customersRouter } from "./routers/customers.router";
 import { returnsRouter } from "./routers/returns.router";
 import { usersRouter } from "./routers/users.router";
@@ -42,6 +44,8 @@ export const appRouter = createRouter({
   laundry: laundryRouter,
   tailoring: tailoringRouter,
   production: productionRouter,
+  branches: branchesRouter,
+  transfers: transfersRouter,
   customers: customersRouter,
   returns: returnsRouter,
   users: usersRouter,
