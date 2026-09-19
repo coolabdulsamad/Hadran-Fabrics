@@ -18,6 +18,7 @@ import { netPayments, recordMoneyMovement } from "../services/money.service";
 import { voidSale } from "../services/sales-void.service";
 import { isApprovalGated, submitApproval } from "../services/approvals.service";
 import { logAudit, requestMeta } from "../services/audit.service";
+import { branchScope } from "../services/branch.service";
 import { checkoutSchema } from "@contracts/pos";
 import type { ReceiptConfig, ReceiptData } from "@contracts/receipts";
 import { STORE, SALE_STATUSES } from "@contracts/constants";
@@ -284,6 +285,7 @@ export const salesRouter = createRouter({
           .values({
             receiptNo,
             cashierId: ctx.user.id,
+            branchId: ctx.activeBranchId,
             customerId: customer?.id ?? null,
             status: "COMPLETED",
             itemCount: lines.reduce((s, l) => s + l.quantity, 0),
@@ -332,7 +334,7 @@ export const salesRouter = createRouter({
             {
               direction: "IN",
               section: "SALES",
-              branchId: ctx.user.branchId ?? null,
+              branchId: ctx.activeBranchId,
               sourceType: "SALE",
               sourceId: saleRow.id,
               sourceRef: receiptNo,
@@ -352,6 +354,7 @@ export const salesRouter = createRouter({
               productId: l.product.id,
               movementType: "SALE",
               quantity: -l.quantity,
+              branchId: ctx.activeBranchId,
               referenceType: "SALE",
               referenceId: saleRow.id,
               reason: `Sale ${receiptNo}`,
@@ -533,6 +536,8 @@ export const salesRouter = createRouter({
       const db = getDb();
       const conds: SQL[] = [eq(sales.cashierId, ctx.user.id)];
       if (input.status) conds.push(eq(sales.status, input.status));
+      const scope = branchScope(sales.branchId, ctx.activeBranch);
+      if (scope) conds.push(scope);
       const where = and(...conds);
 
       const [total] = await db.select({ value: count() }).from(sales).where(where);
@@ -733,9 +738,11 @@ export const salesRouter = createRouter({
         pageSize: z.number().int().min(5).max(50).default(15),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const conds: SQL[] = [];
+      const scope = branchScope(sales.branchId, ctx.activeBranch);
+      if (scope) conds.push(scope);
       if (input.search) conds.push(like(sales.receiptNo, `%${input.search}%`));
       if (input.cashierId) conds.push(eq(sales.cashierId, input.cashierId));
       if (input.customerId) conds.push(eq(sales.customerId, input.customerId));
