@@ -3,6 +3,7 @@ import { Outlet } from "react-router";
 import { useAppSounds } from "@/hooks/use-app-sounds";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { BranchThemeStrip } from "./BranchSwitcher";
 
 /**
  * The authenticated workspace frame:
@@ -38,6 +39,7 @@ export function AppShell() {
         }`}
       >
         <Topbar onOpenSidebar={() => setSidebarOpen(true)} />
+        <BranchThemeStrip />
 
         <main className="w-full min-w-0 flex-1 px-4 py-6 md:px-6 lg:px-8">
           <Outlet />
