@@ -53,6 +53,7 @@ import UsersPage from "./pages/users/UsersPage";
 import PermissionsPage from "./pages/users/PermissionsPage";
 import ApprovalsPage from "./pages/approvals/ApprovalsPage";
 import ReportsPage from "./pages/reports/ReportsPage";
+import GeneralReportsPage from "./pages/reports/GeneralReportsPage";
 import ChatPage from "./pages/chat/ChatPage";
 import AIAssistantPage from "./pages/ai/AIAssistantPage";
 import AnalyticsPage from "./pages/reports/AnalyticsPage";
@@ -349,6 +350,14 @@ export default function App() {
             element={
               <RequirePermission permission="analytics.view">
                 <AnalyticsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/reports/general"
+            element={
+              <RequirePermission permission="reports.general">
+                <GeneralReportsPage />
               </RequirePermission>
             }
           />
