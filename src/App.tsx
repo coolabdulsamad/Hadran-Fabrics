@@ -22,6 +22,11 @@ import ProductionRunsPage from "./pages/tailoring/ProductionRunsPage";
 import ProductionNewRunPage from "./pages/tailoring/ProductionNewRunPage";
 import ProductionRunDetailPage from "./pages/tailoring/ProductionRunDetailPage";
 import ExpensesPage from "./pages/expenses/ExpensesPage";
+import BranchesPage from "./pages/branches/BranchesPage";
+import BranchDetailPage from "./pages/branches/BranchDetailPage";
+import TransfersPage from "./pages/transfers/TransfersPage";
+import TransferNewPage from "./pages/transfers/TransferNewPage";
+import TransferDetailPage from "./pages/transfers/TransferDetailPage";
 import MoneyPage from "./pages/money/MoneyPage";
 import { NotFoundPage } from "./pages/errors/NotFoundPage";
 
@@ -284,6 +289,48 @@ export default function App() {
             element={
               <RequirePermission anyOf={["approvals.request", "approvals.review"]}>
                 <ApprovalsPage />
+              </RequirePermission>
+            }
+          />
+
+          {/* ======== BRANCHES & TRANSFERS — LIVE (Phase 6) ======== */}
+          <Route
+            path="/branches"
+            element={
+              <RequirePermission permission="branches.view">
+                <BranchesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/branches/:id"
+            element={
+              <RequirePermission permission="branches.view">
+                <BranchDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/transfers"
+            element={
+              <RequirePermission permission="transfers.view">
+                <TransfersPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/transfers/new"
+            element={
+              <RequirePermission permission="transfers.manage">
+                <TransferNewPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/transfers/:id"
+            element={
+              <RequirePermission permission="transfers.view">
+                <TransferDetailPage />
               </RequirePermission>
             }
           />
