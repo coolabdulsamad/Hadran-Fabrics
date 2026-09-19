@@ -152,6 +152,16 @@
   background: #fff;
 }
 
+/* Elements that only appear on paper (e.g. the studio report header). */
+.print-only {
+  display: none;
+}
+@media print {
+  .print-only {
+    display: block;
+  }
+}
+
 /* Screen: #print-root is invisible and takes no space. */
 #print-root {
   position: absolute;
@@ -186,6 +196,21 @@
     inset: 0 auto auto 0;
     margin: 0;
     padding: 0;
+  }
+  /* Reports/Analysis Studio: print the current result on plain paper. */
+  body:not(:has(#print-root > *)) #studio-print-root,
+  body:not(:has(#print-root > *)) #studio-print-root * {
+    visibility: visible;
+  }
+  body:not(:has(#print-root > *)) #studio-print-root {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   @page receipt {
     size: 80mm auto;
