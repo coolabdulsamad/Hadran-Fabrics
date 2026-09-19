@@ -39,6 +39,19 @@ import {
   MESSAGE_REFERENCE_TYPES,
   ATTACHMENT_TYPES,
   AI_MESSAGE_ROLES,
+  SECTIONS,
+  BRANCH_STATUSES,
+  EXPENSE_CATEGORIES,
+  EXPENSE_STATUSES,
+  MONEY_DIRECTIONS,
+  MONEY_SOURCE_TYPES,
+  LAUNDRY_ORDER_STATUSES,
+  LAUNDRY_SERVICE_TYPES,
+  TAILORING_ORDER_STATUSES,
+  FABRIC_SOURCES,
+  ORDER_PAYMENT_STATUSES,
+  TRANSFER_STATUSES,
+  PRODUCTION_STATUSES,
 } from "@contracts/index";
 
 /* ======================================================================
@@ -46,6 +59,30 @@ import {
    28 tables: identity & access, catalog, inventory, sales, returns,
    customers, approvals workflow, chat, AI, settings, audit.
    ====================================================================== */
+
+/* ============================ 0. BRANCHES ============================ */
+
+/** Physical locations: the main mall plus registered sub-branches (supermarkets etc). */
+export const branches = mysqlTable(
+  "branches",
+  {
+    id: serial("id").primaryKey(),
+    code: varchar("code", { length: 20 }).notNull().unique(), // e.g. MAIN, KUBWA-2
+    name: varchar("name", { length: 120 }).notNull(),
+    address: varchar("address", { length: 300 }),
+    phone: varchar("phone", { length: 40 }),
+    isMain: boolean("is_main").notNull().default(false),
+    themePrimary: varchar("theme_primary", { length: 20 }), // e.g. #141B2D
+    themeAccent: varchar("theme_accent", { length: 20 }), // e.g. #C9A227
+    status: mysqlEnum("status", BRANCH_STATUSES).notNull().default("ACTIVE"),
+    createdBy: bigint("created_by", { mode: "number", unsigned: true }).references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [index("idx_branches_status").on(t.status)],
+);
 
 /* ============================ 1. USERS & ACCESS ============================ */
 
@@ -62,6 +99,10 @@ export const users = mysqlTable(
     status: mysqlEnum("status", USER_STATUSES).notNull().default("ACTIVE"),
     avatarUrl: varchar("avatar_url", { length: 500 }),
     staffCode: varchar("staff_code", { length: 20 }).unique(), // e.g. HFM-0001
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(
+      (): AnyMySqlColumn => branches.id,
+      { onDelete: "set null" },
+    ), // null = main branch
     notes: text("notes"),
     lastLoginAt: timestamp("last_login_at"),
     createdBy: bigint("created_by", { mode: "number", unsigned: true }).references(
@@ -242,6 +283,9 @@ export const purchases = mysqlTable(
       () => suppliers.id,
       { onDelete: "set null" },
     ),
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }), // null = main branch
     status: mysqlEnum("status", PURCHASE_STATUSES).notNull().default("PENDING"),
     subtotal: decimal("subtotal", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
     tax: decimal("tax", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
@@ -287,6 +331,9 @@ export const stockMovements = mysqlTable(
     productId: bigint("product_id", { mode: "number", unsigned: true })
       .notNull()
       .references(() => products.id, { onDelete: "restrict" }),
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }), // null = main branch
     movementType: mysqlEnum("movement_type", STOCK_MOVEMENT_TYPES).notNull(),
     /** Signed: + in, − out. */
     quantity: decimal("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
@@ -315,6 +362,9 @@ export const stockMovements = mysqlTable(
 export const stockCounts = mysqlTable("stock_counts", {
   id: serial("id").primaryKey(),
   reference: varchar("reference", { length: 30 }).notNull().unique(), // SC-000001
+  branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+  }), // null = main branch
   status: mysqlEnum("status", STOCK_COUNT_STATUSES).notNull().default("IN_PROGRESS"),
   notes: text("notes"),
   startedBy: bigint("started_by", { mode: "number", unsigned: true }).references(() => users.id, {
@@ -386,6 +436,9 @@ export const sales = mysqlTable(
     cashierId: bigint("cashier_id", { mode: "number", unsigned: true })
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }), // null = main branch
     customerId: bigint("customer_id", { mode: "number", unsigned: true }).references(() => customers.id, {
       onDelete: "set null",
     }),
@@ -471,6 +524,9 @@ export const returns = mysqlTable(
     saleId: bigint("sale_id", { mode: "number", unsigned: true })
       .notNull()
       .references(() => sales.id, { onDelete: "restrict" }),
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }), // null = main branch
     type: mysqlEnum("type", RETURN_TYPES).notNull().default("RETURN"),
     reason: varchar("reason", { length: 255 }).notNull(),
     notes: text("notes"),
@@ -740,3 +796,398 @@ export type AiMessage = typeof aiMessages.$inferSelect;
 export type Setting = typeof settings.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+/* ============================ 13. BRANCH STOCK LEVELS ============================ */
+
+/** Per-branch stock for each product. Main branch mirrors products.current_stock until migration. */
+export const stockLevels = mysqlTable(
+  "stock_levels",
+  {
+    id: serial("id").primaryKey(),
+    productId: bigint("product_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    branchId: bigint("branch_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => branches.id, { onDelete: "cascade" }),
+    quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull().default("0"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    uniqueIndex("uq_stock_product_branch").on(t.productId, t.branchId),
+    index("idx_stock_branch").on(t.branchId),
+  ],
+);
+
+/* ============================ 14. EXPENSES & MONEY LEDGER ============================ */
+
+/** Business expenses — rent, salaries, supplies… scoped to a section & branch. */
+export const expenses = mysqlTable(
+  "expenses",
+  {
+    id: serial("id").primaryKey(),
+    refNo: varchar("ref_no", { length: 30 }).notNull().unique(), // e.g. EXP-000001
+    section: mysqlEnum("section", SECTIONS).notNull().default("SALES"),
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }),
+    category: mysqlEnum("category", EXPENSE_CATEGORIES).notNull().default("OTHER"),
+    description: varchar("description", { length: 400 }).notNull(),
+    vendor: varchar("vendor", { length: 160 }),
+    amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+    paymentMethod: mysqlEnum("payment_method", PAYMENT_METHODS).notNull().default("CASH"),
+    expenseDate: date("expense_date").notNull(),
+    receiptUrl: varchar("receipt_url", { length: 500 }),
+    status: mysqlEnum("status", EXPENSE_STATUSES).notNull().default("ACTIVE"),
+    notes: text("notes"),
+    recordedBy: bigint("recorded_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    voidedBy: bigint("voided_by", { mode: "number", unsigned: true }).references(() => users.id, {
+      onDelete: "set null",
+    }),
+    voidReason: varchar("void_reason", { length: 300 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    index("idx_expenses_section").on(t.section, t.expenseDate),
+    index("idx_expenses_branch").on(t.branchId),
+    index("idx_expenses_category").on(t.category),
+    index("idx_expenses_date").on(t.expenseDate),
+  ],
+);
+
+/** The money ledger — every naira in or out, linked to its source record. */
+export const moneyMovements = mysqlTable(
+  "money_movements",
+  {
+    id: serial("id").primaryKey(),
+    refNo: varchar("ref_no", { length: 30 }).notNull().unique(), // e.g. MM-000001
+    direction: mysqlEnum("direction", MONEY_DIRECTIONS).notNull(),
+    section: mysqlEnum("section", SECTIONS).notNull().default("SALES"),
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }),
+    sourceType: mysqlEnum("source_type", MONEY_SOURCE_TYPES).notNull(),
+    sourceId: varchar("source_id", { length: 40 }), // e.g. sale id, expense id
+    sourceRef: varchar("source_ref", { length: 40 }), // e.g. RCP-…, EXP-… (human ref)
+    amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+    paymentMethod: mysqlEnum("payment_method", PAYMENT_METHODS).notNull().default("CASH"),
+    note: varchar("note", { length: 400 }),
+    createdBy: bigint("created_by", { mode: "number", unsigned: true }).references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_money_direction").on(t.direction, t.createdAt),
+    index("idx_money_section").on(t.section, t.createdAt),
+    index("idx_money_branch").on(t.branchId),
+    index("idx_money_source").on(t.sourceType, t.sourceId),
+    index("idx_money_created").on(t.createdAt),
+  ],
+);
+
+/* ============================ 15. INTER-BRANCH TRANSFERS ============================ */
+
+export const branchTransfers = mysqlTable(
+  "branch_transfers",
+  {
+    id: serial("id").primaryKey(),
+    refNo: varchar("ref_no", { length: 30 }).notNull().unique(), // e.g. TRF-000001
+    fromBranchId: bigint("from_branch_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => branches.id),
+    toBranchId: bigint("to_branch_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => branches.id),
+    status: mysqlEnum("status", TRANSFER_STATUSES).notNull().default("PENDING_APPROVAL"),
+    note: varchar("note", { length: 400 }),
+    requestedBy: bigint("requested_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    approvedBy: bigint("approved_by", { mode: "number", unsigned: true }).references(() => users.id, {
+      onDelete: "set null",
+    }),
+    receivedBy: bigint("received_by", { mode: "number", unsigned: true }).references(() => users.id, {
+      onDelete: "set null",
+    }),
+    sentAt: timestamp("sent_at"),
+    receivedAt: timestamp("received_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    index("idx_transfers_from").on(t.fromBranchId, t.status),
+    index("idx_transfers_to").on(t.toBranchId, t.status),
+  ],
+);
+
+export const branchTransferItems = mysqlTable(
+  "branch_transfer_items",
+  {
+    id: serial("id").primaryKey(),
+    transferId: bigint("transfer_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => branchTransfers.id, { onDelete: "cascade" }),
+    productId: bigint("product_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => products.id),
+    productName: varchar("product_name", { length: 200 }).notNull(), // snapshot
+    unit: mysqlEnum("unit", UNITS).notNull().default("PIECE"),
+    quantity: decimal("quantity", { precision: 12, scale: 2 }).notNull(),
+    receivedQty: decimal("received_qty", { precision: 12, scale: 2 }),
+  },
+  (t) => [index("idx_transfer_items_transfer").on(t.transferId)],
+);
+
+/* ============================ 16. LAUNDRY ============================ */
+
+export const laundryOrders = mysqlTable(
+  "laundry_orders",
+  {
+    id: serial("id").primaryKey(),
+    orderNo: varchar("order_no", { length: 30 }).notNull().unique(), // e.g. LND-000001
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }),
+    customerId: bigint("customer_id", { mode: "number", unsigned: true }).references(
+      () => customers.id,
+      { onDelete: "set null" },
+    ),
+    customerName: varchar("customer_name", { length: 160 }).notNull(), // walk-ins allowed
+    customerPhone: varchar("customer_phone", { length: 40 }),
+    status: mysqlEnum("status", LAUNDRY_ORDER_STATUSES).notNull().default("RECEIVED"),
+    priority: mysqlEnum("priority", ["NORMAL", "EXPRESS"]).notNull().default("NORMAL"),
+    dueDate: date("due_date"),
+    subtotal: decimal("subtotal", { precision: 14, scale: 2 }).notNull().default("0"),
+    discountAmount: decimal("discount_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    totalAmount: decimal("total_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    amountPaid: decimal("amount_paid", { precision: 14, scale: 2 }).notNull().default("0"),
+    paymentStatus: mysqlEnum("payment_status", ORDER_PAYMENT_STATUSES)
+      .notNull()
+      .default("UNPAID"),
+    notes: text("notes"),
+    receivedBy: bigint("received_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    collectedAt: timestamp("collected_at"),
+    cancelledReason: varchar("cancelled_reason", { length: 300 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    index("idx_laundry_status").on(t.status),
+    index("idx_laundry_branch").on(t.branchId, t.createdAt),
+    index("idx_laundry_customer").on(t.customerId),
+    index("idx_laundry_created").on(t.createdAt),
+  ],
+);
+
+export const laundryOrderItems = mysqlTable(
+  "laundry_order_items",
+  {
+    id: serial("id").primaryKey(),
+    orderId: bigint("order_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => laundryOrders.id, { onDelete: "cascade" }),
+    garmentType: varchar("garment_type", { length: 100 }).notNull(), // e.g. Agbada, Suit, Bedsheet
+    description: varchar("description", { length: 300 }), // color, brand, marks
+    serviceType: mysqlEnum("service_type", LAUNDRY_SERVICE_TYPES).notNull().default("WASH_IRON"),
+    quantity: int("quantity").notNull().default(1),
+    unitPrice: decimal("unit_price", { precision: 14, scale: 2 }).notNull(),
+    lineTotal: decimal("line_total", { precision: 14, scale: 2 }).notNull(),
+    conditionNotes: varchar("condition_notes", { length: 300 }), // stains/damage at intake
+  },
+  (t) => [index("idx_laundry_items_order").on(t.orderId)],
+);
+
+export const laundryPayments = mysqlTable(
+  "laundry_payments",
+  {
+    id: serial("id").primaryKey(),
+    orderId: bigint("order_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => laundryOrders.id, { onDelete: "cascade" }),
+    amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+    method: mysqlEnum("method", PAYMENT_METHODS).notNull().default("CASH"),
+    receivedBy: bigint("received_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    note: varchar("note", { length: 300 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("idx_laundry_payments_order").on(t.orderId)],
+);
+
+export const laundryStatusHistory = mysqlTable(
+  "laundry_status_history",
+  {
+    id: serial("id").primaryKey(),
+    orderId: bigint("order_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => laundryOrders.id, { onDelete: "cascade" }),
+    fromStatus: mysqlEnum("from_status", LAUNDRY_ORDER_STATUSES),
+    toStatus: mysqlEnum("to_status", LAUNDRY_ORDER_STATUSES).notNull(),
+    changedBy: bigint("changed_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    note: varchar("note", { length: 300 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("idx_laundry_history_order").on(t.orderId)],
+);
+
+/* ============================ 17. TAILORING ============================ */
+
+export const tailoringOrders = mysqlTable(
+  "tailoring_orders",
+  {
+    id: serial("id").primaryKey(),
+    orderNo: varchar("order_no", { length: 30 }).notNull().unique(), // e.g. TLR-000001
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }),
+    customerId: bigint("customer_id", { mode: "number", unsigned: true }).references(
+      () => customers.id,
+      { onDelete: "set null" },
+    ),
+    customerName: varchar("customer_name", { length: 160 }).notNull(),
+    customerPhone: varchar("customer_phone", { length: 40 }),
+    styleDescription: varchar("style_description", { length: 400 }),
+    styleImageUrl: varchar("style_image_url", { length: 500 }), // reference photo
+    fabricSource: mysqlEnum("fabric_source", FABRIC_SOURCES).notNull().default("CUSTOMER_OWN"),
+    status: mysqlEnum("status", TAILORING_ORDER_STATUSES).notNull().default("RECEIVED"),
+    tailorId: bigint("tailor_id", { mode: "number", unsigned: true }).references(() => users.id, {
+      onDelete: "set null",
+    }), // assigned tailor
+    dueDate: date("due_date"),
+    price: decimal("price", { precision: 14, scale: 2 }).notNull().default("0"),
+    amountPaid: decimal("amount_paid", { precision: 14, scale: 2 }).notNull().default("0"),
+    paymentStatus: mysqlEnum("payment_status", ORDER_PAYMENT_STATUSES)
+      .notNull()
+      .default("UNPAID"),
+    notes: text("notes"),
+    receivedBy: bigint("received_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    deliveredAt: timestamp("delivered_at"),
+    cancelledReason: varchar("cancelled_reason", { length: 300 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    index("idx_tailoring_status").on(t.status),
+    index("idx_tailoring_branch").on(t.branchId, t.createdAt),
+    index("idx_tailoring_tailor").on(t.tailorId),
+    index("idx_tailoring_customer").on(t.customerId),
+  ],
+);
+
+/** Body measurements per tailoring order (JSON: chest, waist, sleeve, length…). */
+export const tailoringMeasurements = mysqlTable(
+  "tailoring_measurements",
+  {
+    id: serial("id").primaryKey(),
+    orderId: bigint("order_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => tailoringOrders.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 100 }).notNull().default("Standard"), // e.g. Standard / Agbada
+    measurements: json("measurements").$type<Record<string, number | string>>().notNull(),
+    recordedBy: bigint("recorded_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("idx_measurements_order").on(t.orderId)],
+);
+
+export const tailoringPayments = mysqlTable(
+  "tailoring_payments",
+  {
+    id: serial("id").primaryKey(),
+    orderId: bigint("order_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => tailoringOrders.id, { onDelete: "cascade" }),
+    amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+    method: mysqlEnum("method", PAYMENT_METHODS).notNull().default("CASH"),
+    receivedBy: bigint("received_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    note: varchar("note", { length: 300 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("idx_tailoring_payments_order").on(t.orderId)],
+);
+
+export const tailoringStatusHistory = mysqlTable(
+  "tailoring_status_history",
+  {
+    id: serial("id").primaryKey(),
+    orderId: bigint("order_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => tailoringOrders.id, { onDelete: "cascade" }),
+    fromStatus: mysqlEnum("from_status", TAILORING_ORDER_STATUSES),
+    toStatus: mysqlEnum("to_status", TAILORING_ORDER_STATUSES).notNull(),
+    changedBy: bigint("changed_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    note: varchar("note", { length: 300 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("idx_tailoring_history_order").on(t.orderId)],
+);
+
+/* ============================ 18. IN-HOUSE PRODUCTION ============================ */
+
+/** Converting shop materials into new sellable products (e.g. fabric → ready-made wears). */
+export const productionOrders = mysqlTable(
+  "production_orders",
+  {
+    id: serial("id").primaryKey(),
+    refNo: varchar("ref_no", { length: 30 }).notNull().unique(), // e.g. PRD-000001
+    branchId: bigint("branch_id", { mode: "number", unsigned: true }).references(() => branches.id, {
+      onDelete: "set null",
+    }),
+    outputProductId: bigint("output_product_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => products.id), // the product being made
+    outputQty: decimal("output_qty", { precision: 12, scale: 2 }).notNull(),
+    status: mysqlEnum("status", PRODUCTION_STATUSES).notNull().default("DRAFT"),
+    notes: text("notes"),
+    requestedBy: bigint("requested_by", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => users.id),
+    approvedBy: bigint("approved_by", { mode: "number", unsigned: true }).references(() => users.id, {
+      onDelete: "set null",
+    }),
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    index("idx_production_status").on(t.status),
+    index("idx_production_output").on(t.outputProductId),
+  ],
+);
+
+/** Materials consumed from shop stock for a production run. */
+export const productionMaterials = mysqlTable(
+  "production_materials",
+  {
+    id: serial("id").primaryKey(),
+    productionId: bigint("production_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => productionOrders.id, { onDelete: "cascade" }),
+    productId: bigint("product_id", { mode: "number", unsigned: true })
+      .notNull()
+      .references(() => products.id),
+    productName: varchar("product_name", { length: 200 }).notNull(), // snapshot
+    unit: mysqlEnum("unit", UNITS).notNull().default("PIECE"),
+    quantityPlanned: decimal("quantity_planned", { precision: 12, scale: 2 }).notNull(),
+    quantityUsed: decimal("quantity_used", { precision: 12, scale: 2 }),
+  },
+  (t) => [index("idx_production_materials_run").on(t.productionId)],
+);

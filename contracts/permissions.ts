@@ -77,12 +77,63 @@ export const PERMISSIONS: PermissionDef[] = [
   { key: "settings.hardware", label: "Hardware settings", group: "Settings", description: "Configure receipt printer and barcode scanner." },
   { key: "settings.system", label: "System settings", group: "Settings", description: "Core system configuration (Super Admin)." },
   { key: "audit.view", label: "View audit logs", group: "Settings", description: "Inspect the full activity audit trail." },
+
+  // ---- EXPENSES & MONEY ----
+  { key: "expenses.view", label: "View expenses", group: "Expenses & Money", description: "View expense records." },
+  { key: "expenses.record", label: "Record expenses", group: "Expenses & Money", description: "Record a new expense (may require approval)." },
+  { key: "expenses.void", label: "Void expenses", group: "Expenses & Money", description: "Void an incorrectly recorded expense." },
+  { key: "money.view", label: "Money in/out", group: "Expenses & Money", description: "View the money in / money out ledger and balances." },
+  { key: "money.manage", label: "Manual money entries", group: "Expenses & Money", description: "Record manual money in/out entries (owner cash, bank deposits)." },
+
+  // ---- LAUNDRY ----
+  { key: "laundry.view", label: "View laundry", group: "Laundry", description: "View laundry orders and records." },
+  { key: "laundry.manage", label: "Manage laundry orders", group: "Laundry", description: "Create orders, add garments, take payments." },
+  { key: "laundry.advance_status", label: "Move workflow", group: "Laundry", description: "Move orders through washing → ready → collected." },
+  { key: "laundry.cancel", label: "Cancel laundry orders", group: "Laundry", description: "Cancel a laundry order." },
+
+  // ---- TAILORING ----
+  { key: "tailoring.view", label: "View tailoring", group: "Tailoring", description: "View tailoring orders and records." },
+  { key: "tailoring.manage", label: "Manage tailoring orders", group: "Tailoring", description: "Create orders, record measurements, take payments." },
+  { key: "tailoring.advance_status", label: "Move workflow", group: "Tailoring", description: "Move orders through cutting → sewing → delivered." },
+  { key: "tailoring.cancel", label: "Cancel tailoring orders", group: "Tailoring", description: "Cancel a tailoring order." },
+
+  // ---- PRODUCTION (materials → new products) ----
+  { key: "production.view", label: "View production", group: "Production", description: "View in-house production runs." },
+  { key: "production.manage", label: "Run production", group: "Production", description: "Create and complete production runs (consumes stock, may require approval)." },
+
+  // ---- BRANCHES & TRANSFERS ----
+  { key: "branches.view", label: "View branches", group: "Branches", description: "View branch list and branch-scoped data." },
+  { key: "branches.manage", label: "Manage branches", group: "Branches", description: "Register and configure branches." },
+  { key: "branches.switch", label: "Switch branches", group: "Branches", description: "Work inside other branches after login." },
+  { key: "transfers.view", label: "View transfers", group: "Branches", description: "View inter-branch stock transfers." },
+  { key: "transfers.manage", label: "Manage transfers", group: "Branches", description: "Create, send and receive stock transfers (may require approval)." },
+
+  // ---- GENERAL (cross-section) REPORTS ----
+  { key: "reports.general", label: "General reports", group: "Reports & Analytics", description: "Cross-section and cross-branch reports & analytics." },
 ];
 
 export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
 
 /** Default permission set granted to each role (seeded into role_permissions). */
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
+  LAUNDRY: [
+    "laundry.view",
+    "laundry.manage",
+    "laundry.advance_status",
+    "expenses.view",
+    "expenses.record",
+    "chat.use",
+  ],
+  TAILORING: [
+    "tailoring.view",
+    "tailoring.manage",
+    "tailoring.advance_status",
+    "production.view",
+    "expenses.view",
+    "expenses.record",
+    "products.view",
+    "chat.use",
+  ],
   SALES: [
     "pos.sell",
     "pos.hold_sale",
@@ -130,6 +181,22 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     "approvals.request",
     "chat.use",
     "ai.use",
+    "expenses.view",
+    "expenses.record",
+    "money.view",
+    "money.manage",
+    "laundry.view",
+    "laundry.manage",
+    "laundry.advance_status",
+    "tailoring.view",
+    "tailoring.manage",
+    "tailoring.advance_status",
+    "production.view",
+    "production.manage",
+    "branches.view",
+    "branches.switch",
+    "transfers.view",
+    "transfers.manage",
   ],
   ADMIN: [
     // everything MANAGER has, plus:
@@ -175,6 +242,27 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     "settings.sales",
     "settings.hardware",
     "audit.view",
+    "expenses.view",
+    "expenses.record",
+    "expenses.void",
+    "money.view",
+    "money.manage",
+    "laundry.view",
+    "laundry.manage",
+    "laundry.advance_status",
+    "laundry.cancel",
+    "tailoring.view",
+    "tailoring.manage",
+    "tailoring.advance_status",
+    "tailoring.cancel",
+    "production.view",
+    "production.manage",
+    "branches.view",
+    "branches.manage",
+    "branches.switch",
+    "transfers.view",
+    "transfers.manage",
+    "reports.general",
   ],
   SUPER_ADMIN: PERMISSION_KEYS, // developer-level: everything
 };
@@ -189,4 +277,7 @@ export const APPROVAL_GATED_PERMISSIONS = [
   "products.delete",
   "inventory.adjust",
   "sales.void",
+  "expenses.record",
+  "transfers.manage",
+  "production.manage",
 ] as const;
