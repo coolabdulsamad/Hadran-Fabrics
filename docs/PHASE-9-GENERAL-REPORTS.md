@@ -96,3 +96,20 @@ numeric), and a clean print view via `#studio-print-root`. Filenames use the
 - Playwright (1440px + 390px): all 12 report types and 8 analysis types
   enumerated and executed against live data; KPI cards, charts and tables
   render; CSV and Excel downloads confirmed; zero console/page errors.
+
+## Deployment note — permission matrix self-heal
+
+New permission keys (like `reports.general`) are stored per role in the
+`role_permissions` table, which was historically seeded once and then
+skipped. Databases seeded before a release therefore never received newer
+keys and Admins saw 403s on new pages.
+
+Fixed in this phase:
+
+- `db/seeds/roles.seed.ts` is now an idempotent **sync**: it inserts only
+  missing (role, permission) rows with preset defaults and never touches
+  existing rows, so Permission Management tuning is preserved.
+- `api/boot.ts` runs the sync automatically on every production boot, so
+  every deploy self-heals the matrix.
+- `db/sync-permissions.ts` (`npx tsx db/sync-permissions.ts`) is an ops
+  utility to run the same sync on demand against any environment.

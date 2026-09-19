@@ -28,6 +28,17 @@ if (env.isProduction) {
   const { serveStaticFiles } = await import("./lib/vite");
   serveStaticFiles(app);
 
+  // Self-heal the role permission matrix on every boot: any permission key
+  // introduced by a new release is inserted with its preset default, while
+  // existing rows (including Admin tuning) are left untouched.
+  try {
+    const { getDb } = await import("./queries/connection");
+    const { seedRolePermissions } = await import("../db/seeds/roles.seed");
+    await seedRolePermissions(getDb());
+  } catch (err) {
+    console.error("role_permissions sync failed (continuing boot):", err);
+  }
+
   const port = parseInt(process.env.PORT || "3000");
   serve({ fetch: app.fetch, port }, () => {
     console.log(`Server running on http://localhost:${port}/`);
