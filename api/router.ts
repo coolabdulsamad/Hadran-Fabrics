@@ -10,6 +10,7 @@ import { purchasesRouter } from "./routers/purchases.router";
 import { salesRouter } from "./routers/sales.router";
 import { expensesRouter } from "./routers/expenses.router";
 import { moneyRouter } from "./routers/money.router";
+import { laundryRouter } from "./routers/laundry.router";
 import { customersRouter } from "./routers/customers.router";
 import { returnsRouter } from "./routers/returns.router";
 import { usersRouter } from "./routers/users.router";
@@ -36,6 +37,7 @@ export const appRouter = createRouter({
   sales: salesRouter,
   expenses: expensesRouter,
   money: moneyRouter,
+  laundry: laundryRouter,
   customers: customersRouter,
   returns: returnsRouter,
   users: usersRouter,
