@@ -9,6 +9,7 @@ import { isApprovalGated, submitApproval } from "../services/approvals.service";
 import { applyExpenseRecord } from "../services/expenses.service";
 import { recordMoneyMovement } from "../services/money.service";
 import { logAudit, requestMeta } from "../services/audit.service";
+import { branchScope } from "../services/branch.service";
 import { EXPENSE_CATEGORIES, EXPENSE_STATUSES, PAYMENT_METHODS, SECTIONS } from "@contracts/constants";
 
 /**
@@ -41,8 +42,10 @@ const recordInput = z.object({
   notes: z.string().max(2000).optional(),
 });
 
-function buildFilters(input: z.infer<typeof listInput>): SQL[] {
+function buildFilters(input: z.infer<typeof listInput>, branch: Parameters<typeof branchScope>[1]): SQL[] {
   const filters: SQL[] = [];
+  const scope = branchScope(expenses.branchId, branch);
+  if (scope) filters.push(scope);
   if (input.section) filters.push(eq(expenses.section, input.section));
   if (input.category) filters.push(eq(expenses.category, input.category));
   if (input.status) filters.push(eq(expenses.status, input.status));
@@ -57,9 +60,9 @@ function buildFilters(input: z.infer<typeof listInput>): SQL[] {
 }
 
 export const expensesRouter = createRouter({
-  list: permissionProcedure("expenses.view").input(listInput).query(async ({ input }) => {
+  list: permissionProcedure("expenses.view").input(listInput).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
 
     const [totalRow] = await db.select({ value: count() }).from(expenses).where(where);
@@ -84,9 +87,9 @@ export const expensesRouter = createRouter({
   }),
 
   /** All matching rows without paging — for CSV/Excel export and print. */
-  exportRows: permissionProcedure("expenses.view").input(listInput).query(async ({ input }) => {
+  exportRows: permissionProcedure("expenses.view").input(listInput).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
     const rows = await db
       .select({ expense: expenses, recordedByName: users.fullName })
@@ -98,8 +101,9 @@ export const expensesRouter = createRouter({
     return rows.map((r) => ({ ...r.expense, recordedByName: r.recordedByName }));
   }),
 
-  summary: permissionProcedure("expenses.view").query(async () => {
+  summary: permissionProcedure("expenses.view").query(async ({ ctx }) => {
     const db = getDb();
+    const scope = branchScope(expenses.branchId, ctx.activeBranch);
     const monthStart = new Date();
     monthStart.setDate(1);
     const monthStartStr = monthStart.toISOString().slice(0, 10);
@@ -110,23 +114,23 @@ export const expensesRouter = createRouter({
     const [month] = await db
       .select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)`, count: count() })
       .from(expenses)
-      .where(and(active, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))));
+      .where(and(active, scope, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))));
     const [today] = await db
       .select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)`, count: count() })
       .from(expenses)
-      .where(and(active, eq(expenses.expenseDate, new Date(`${todayStr}T00:00:00`))));
+      .where(and(active, scope, eq(expenses.expenseDate, new Date(`${todayStr}T00:00:00`))));
 
     const byCategory = await db
       .select({ category: expenses.category, total: sql<string>`SUM(${expenses.amount})`, count: count() })
       .from(expenses)
-      .where(and(active, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))))
+      .where(and(active, scope, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))))
       .groupBy(expenses.category)
       .orderBy(desc(sql`SUM(${expenses.amount})`));
 
     const bySection = await db
       .select({ section: expenses.section, total: sql<string>`SUM(${expenses.amount})`, count: count() })
       .from(expenses)
-      .where(and(active, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))))
+      .where(and(active, scope, gte(expenses.expenseDate, new Date(`${monthStartStr}T00:00:00`))))
       .groupBy(expenses.section);
 
     return {
@@ -146,7 +150,7 @@ export const expensesRouter = createRouter({
       const requestId = await submitApproval({
         requestType: "EXPENSE_RECORD",
         entityType: "EXPENSE",
-        payload: { ...input, requestedBy: ctx.user.id, branchId: ctx.user.branchId ?? null },
+        payload: { ...input, requestedBy: ctx.user.id, branchId: ctx.activeBranchId },
         summary: `Record expense: ${input.description} — ₦${input.amount.toLocaleString()} (${input.category.replace(/_/g, " ")})`,
         requesterId: ctx.user.id,
       });
@@ -161,7 +165,7 @@ export const expensesRouter = createRouter({
       return { pending: true as const, requestId };
     }
 
-    const result = await applyExpenseRecord({ ...input }, ctx.user.id, ctx.user.branchId ?? null);
+    const result = await applyExpenseRecord({ ...input }, ctx.user.id, ctx.activeBranchId);
     await logAudit({
       actorId: ctx.user.id,
       action: "expense.record",

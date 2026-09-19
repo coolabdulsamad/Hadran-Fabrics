@@ -183,6 +183,7 @@ export const purchasesRouter = createRouter({
           movementType: "PURCHASE_RECEIVED",
           quantity: receipt.quantity,
           unit: item.unit,
+          branchId: po.branchId ?? ctx.activeBranchId,
           referenceType: "PURCHASE",
           referenceId: input.purchaseId,
           reason: `Purchase order ${po.reference}`,
