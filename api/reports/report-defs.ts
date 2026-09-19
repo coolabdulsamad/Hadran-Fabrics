@@ -2024,7 +2024,7 @@ const tailoringOutstanding: ReportDef = {
             { key: "date", label: "Received", format: "text" },
             { key: "customer", label: "Customer" },
             { key: "phone", label: "Phone" },
-            { key: "price", label: "Total", align: "right", format: "currency" },
+            { key: "price", label: "Price", align: "right", format: "currency" },
             { key: "paid", label: "Paid", align: "right", format: "currency" },
             { key: "balance", label: "Balance", align: "right", format: "currency" },
             { key: "status", label: "Status" },
