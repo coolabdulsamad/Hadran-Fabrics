@@ -8,6 +8,8 @@ import type {
   PurchaseStatus,
   StockCountStatus,
   MessageReferenceType,
+  ExpenseCategory,
+  MoneySourceType,
 } from "./constants";
 
 /** Human-readable labels for domain enums (shared frontend ↔ backend). */
@@ -24,6 +26,10 @@ export const MOVEMENT_LABELS: Record<StockMovementType, string> = {
   PURCHASE_RECEIVED: "Purchase Received",
   DAMAGE: "Damage / Loss",
   COUNT_CORRECTION: "Count Correction",
+  TRANSFER_OUT: "Branch Transfer Out",
+  TRANSFER_IN: "Branch Transfer In",
+  PRODUCTION_OUT: "Production Material Used",
+  PRODUCTION_IN: "Production Output",
 };
 
 export const SALE_STATUS_LABELS: Record<SaleStatus, string> = {
@@ -54,6 +60,9 @@ export const APPROVAL_TYPE_LABELS: Record<ApprovalType, string> = {
   VOID_SALE: "Void Sale",
   RETURN_PROCESS: "Process Return",
   CUSTOMER_DISCOUNT: "Customer Discount",
+  EXPENSE_RECORD: "Record Expense",
+  BRANCH_TRANSFER: "Branch Transfer",
+  PRODUCTION_RUN: "Production Run",
 };
 
 export const APPROVAL_STATUS_LABELS: Record<ApprovalRequestStatus, string> = {
@@ -82,4 +91,32 @@ export const REFERENCE_TYPE_LABELS: Record<MessageReferenceType, string> = {
   STOCK_MOVEMENT: "Stock Movement",
   CUSTOMER: "Customer",
   PURCHASE: "Purchase",
+};
+
+export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+  RENT: "Rent",
+  UTILITIES: "Utilities",
+  SALARIES: "Salaries & Wages",
+  SUPPLIES: "Supplies",
+  EQUIPMENT: "Equipment",
+  MAINTENANCE: "Maintenance & Repairs",
+  TRANSPORT: "Transport & Logistics",
+  MARKETING: "Marketing & Adverts",
+  PACKAGING: "Packaging",
+  CLEANING: "Cleaning",
+  TAXES_LEVIES: "Taxes & Levies",
+  OTHER: "Other",
+};
+
+export const MONEY_SOURCE_LABELS: Record<MoneySourceType, string> = {
+  SALE: "Sale",
+  SALE_VOID_REVERSAL: "Sale Void Reversal",
+  RETURN_REFUND: "Return Refund",
+  EXCHANGE_TOPUP: "Exchange Top-up",
+  EXPENSE: "Expense",
+  PURCHASE: "Stock Purchase",
+  LAUNDRY_PAYMENT: "Laundry Payment",
+  TAILORING_PAYMENT: "Tailoring Payment",
+  MANUAL_IN: "Manual Money In",
+  MANUAL_OUT: "Manual Money Out",
 };

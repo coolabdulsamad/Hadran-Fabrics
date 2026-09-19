@@ -116,8 +116,136 @@ export const STOCK_MOVEMENT_TYPES = [
   "PURCHASE_RECEIVED",
   "DAMAGE",
   "COUNT_CORRECTION",
+  "TRANSFER_OUT",
+  "TRANSFER_IN",
+  "PRODUCTION_OUT",
+  "PRODUCTION_IN",
 ] as const;
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
+
+// ---------- Sections & branches ----------
+/** Business sections inside the mall. SALES = fabrics/shop, LAUNDRY, TAILORING. */
+export const SECTIONS = ["SALES", "LAUNDRY", "TAILORING"] as const;
+export type Section = (typeof SECTIONS)[number];
+
+export const SECTION_LABELS: Record<Section, string> = {
+  SALES: "Sales & Inventory",
+  LAUNDRY: "Laundry",
+  TAILORING: "Tailoring",
+};
+
+/** Short one-line pitch for each section (login / picker cards). */
+export const SECTION_DESCRIPTIONS: Record<Section, string> = {
+  SALES: "Fabrics, ready-wear & accessories — POS, inventory, customers and shop reports.",
+  LAUNDRY: "Garment care — washing, dry-cleaning & ironing orders, workflow and payments.",
+  TAILORING: "Bespoke tailoring — measurements, style orders, workflow and in-house production.",
+};
+
+/** Landing route for each section. */
+export const SECTION_HOME: Record<Section, string> = {
+  SALES: "/dashboard",
+  LAUNDRY: "/laundry",
+  TAILORING: "/tailoring",
+};
+
+export const BRANCH_STATUSES = ["ACTIVE", "INACTIVE"] as const;
+export type BranchStatus = (typeof BRANCH_STATUSES)[number];
+
+// ---------- Expenses & money management ----------
+export const EXPENSE_CATEGORIES = [
+  "RENT",
+  "UTILITIES",
+  "SALARIES",
+  "SUPPLIES",
+  "EQUIPMENT",
+  "MAINTENANCE",
+  "TRANSPORT",
+  "MARKETING",
+  "PACKAGING",
+  "CLEANING",
+  "TAXES_LEVIES",
+  "OTHER",
+] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export const EXPENSE_STATUSES = ["ACTIVE", "VOIDED"] as const;
+export type ExpenseStatus = (typeof EXPENSE_STATUSES)[number];
+
+/** Money ledger: every naira entering or leaving the business. */
+export const MONEY_DIRECTIONS = ["IN", "OUT"] as const;
+export type MoneyDirection = (typeof MONEY_DIRECTIONS)[number];
+
+export const MONEY_SOURCE_TYPES = [
+  "SALE",
+  "SALE_VOID_REVERSAL",
+  "RETURN_REFUND",
+  "EXCHANGE_TOPUP",
+  "EXPENSE",
+  "PURCHASE",
+  "LAUNDRY_PAYMENT",
+  "TAILORING_PAYMENT",
+  "MANUAL_IN",
+  "MANUAL_OUT",
+] as const;
+export type MoneySourceType = (typeof MONEY_SOURCE_TYPES)[number];
+
+// ---------- Laundry ----------
+export const LAUNDRY_ORDER_STATUSES = [
+  "RECEIVED",
+  "WASHING",
+  "DRYING",
+  "IRONING",
+  "READY",
+  "COLLECTED",
+  "CANCELLED",
+] as const;
+export type LaundryOrderStatus = (typeof LAUNDRY_ORDER_STATUSES)[number];
+
+export const LAUNDRY_SERVICE_TYPES = [
+  "WASH",
+  "DRY_CLEAN",
+  "IRON",
+  "WASH_IRON",
+  "STAIN_REMOVAL",
+  "REPAIR",
+] as const;
+export type LaundryServiceType = (typeof LAUNDRY_SERVICE_TYPES)[number];
+
+// ---------- Tailoring ----------
+export const TAILORING_ORDER_STATUSES = [
+  "RECEIVED",
+  "CUTTING",
+  "SEWING",
+  "FINISHING",
+  "FITTING",
+  "READY",
+  "DELIVERED",
+  "CANCELLED",
+] as const;
+export type TailoringOrderStatus = (typeof TAILORING_ORDER_STATUSES)[number];
+
+export const FABRIC_SOURCES = ["CUSTOMER_OWN", "SHOP_STOCK"] as const;
+export type FabricSource = (typeof FABRIC_SOURCES)[number];
+
+// ---------- Shared payment status (laundry/tailoring orders) ----------
+export const ORDER_PAYMENT_STATUSES = ["UNPAID", "PART_PAID", "PAID"] as const;
+export type OrderPaymentStatus = (typeof ORDER_PAYMENT_STATUSES)[number];
+
+// ---------- Branch transfers ----------
+export const TRANSFER_STATUSES = [
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "IN_TRANSIT",
+  "RECEIVED",
+  "REJECTED",
+  "CANCELLED",
+] as const;
+export type TransferStatus = (typeof TRANSFER_STATUSES)[number];
+
+// ---------- In-house production (materials → new sellable products) ----------
+export const PRODUCTION_STATUSES = ["DRAFT", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
+export type ProductionStatus = (typeof PRODUCTION_STATUSES)[number];
+
 
 export const STOCK_COUNT_STATUSES = ["IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
 export type StockCountStatus = (typeof STOCK_COUNT_STATUSES)[number];
@@ -144,6 +272,9 @@ export const APPROVAL_TYPES = [
   "VOID_SALE",
   "RETURN_PROCESS",
   "CUSTOMER_DISCOUNT",
+  "EXPENSE_RECORD",
+  "BRANCH_TRANSFER",
+  "PRODUCTION_RUN",
 ] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 
