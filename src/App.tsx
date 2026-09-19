@@ -1,8 +1,22 @@
 import { Navigate, Route, Routes } from "react-router";
 import { Toaster } from "sonner";
+import {
+  ClipboardList,
+  CreditCard,
+  Factory,
+  FileBarChart,
+  PlusCircle,
+  Users,
+} from "lucide-react";
 
 import LoginPage from "./pages/auth/LoginPage";
 import DashboardPage from "./pages/dashboard/DashboardPage";
+import SectionPickerPage from "./pages/sections/SectionPickerPage";
+import LaundryHomePage from "./pages/laundry/LaundryHomePage";
+import TailoringHomePage from "./pages/tailoring/TailoringHomePage";
+import ExpensesPage from "./pages/expenses/ExpensesPage";
+import MoneyPage from "./pages/money/MoneyPage";
+import { ModulePlaceholder } from "./components/common/ModulePlaceholder";
 import { NotFoundPage } from "./pages/errors/NotFoundPage";
 
 // Phase 4 — Catalog & Inventory (live)
@@ -36,20 +50,40 @@ import AuditLogsPage from "./pages/settings/AuditLogsPage";
 import ProfilePage from "./pages/profile/ProfilePage";
 
 import { AppShell } from "@/components/layout/AppShell";
-import { RequireAuth, RequirePermission } from "@/components/layout/guards";
+import { RequireAuth, RequirePermission, RequireSection } from "@/components/layout/guards";
+import { useAuth } from "@/hooks/use-auth";
+import { landingRouteFor } from "@/store/section-store";
+import { LoadingScreen } from "@/components/common/LoadingScreen";
 
 /**
  * HADRAN FABRICS MALL — route map.
  * Built modules render their real pages; upcoming modules render an
  * honest phase placeholder (replaced as each phase ships).
  */
+
+/** "/" → login when signed out, otherwise the role's landing route. */
+function HomeRedirect() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return <LoadingScreen label="Restoring your session…" />;
+  if (!user) return <Navigate to="/login" replace />;
+  return <Navigate to={landingRouteFor(user.role)} replace />;
+}
+
 export default function App() {
   return (
     <>
       <Toaster position="top-right" richColors closeButton />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<HomeRedirect />} />
+        <Route
+          path="/sections"
+          element={
+            <RequireAuth>
+              <SectionPickerPage />
+            </RequireAuth>
+          }
+        />
 
         {/* -------- Authenticated workspace -------- */}
         <Route
@@ -59,7 +93,14 @@ export default function App() {
             </RequireAuth>
           }
         >
-          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireSection section="SALES">
+                <DashboardPage />
+              </RequireSection>
+            }
+          />
 
           {/* ======== CATALOG — LIVE (Phase 4) ======== */}
           <Route
@@ -294,6 +335,162 @@ export default function App() {
               </RequirePermission>
             }
           />
+          {/* ======== MONEY — LIVE (Phase 3) ======== */}
+          <Route
+            path="/expenses"
+            element={
+              <RequireSection section="SALES">
+                <RequirePermission permission="expenses.view">
+                  <ExpensesPage />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/money"
+            element={
+              <RequireSection section="SALES">
+                <RequirePermission permission="money.view">
+                  <MoneyPage />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+
+          {/* ======== LAUNDRY SECTION — home live, modules in Phase 4 ======== */}
+          <Route
+            path="/laundry"
+            element={
+              <RequireSection section="LAUNDRY">
+                <RequirePermission permission="laundry.view">
+                  <LaundryHomePage />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/laundry/orders/new"
+            element={
+              <RequireSection section="LAUNDRY">
+                <RequirePermission permission="laundry.manage">
+                  <ModulePlaceholder title="New Laundry Order" phase={4} icon={PlusCircle} backTo="/laundry" backLabel="Back to Laundry Home" description="Receive garments, price each service line, capture deposits and print the order ticket — all from one screen." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/laundry/orders"
+            element={
+              <RequireSection section="LAUNDRY">
+                <RequirePermission permission="laundry.view">
+                  <ModulePlaceholder title="Laundry Orders" phase={4} icon={ClipboardList} backTo="/laundry" backLabel="Back to Laundry Home" description="Every order tracked from received → washing → drying → ironing → ready → collected, with due dates and priority." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/laundry/payments"
+            element={
+              <RequireSection section="LAUNDRY">
+                <RequirePermission permission="laundry.view">
+                  <ModulePlaceholder title="Laundry Payments" phase={4} icon={CreditCard} backTo="/laundry" backLabel="Back to Laundry Home" description="Deposits, balance collections and receipts for laundry orders — fully tied into the money ledger." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/laundry/customers"
+            element={
+              <RequireSection section="LAUNDRY">
+                <RequirePermission permission="laundry.view">
+                  <ModulePlaceholder title="Laundry Customers" phase={4} icon={Users} backTo="/laundry" backLabel="Back to Laundry Home" description="Laundry customer records, contact details and full order history per customer." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/laundry/reports"
+            element={
+              <RequireSection section="LAUNDRY">
+                <RequirePermission permission="laundry.view">
+                  <ModulePlaceholder title="Laundry Reports" phase={4} icon={FileBarChart} backTo="/laundry" backLabel="Back to Laundry Home" description="Section reports: orders by status, revenue, staff performance, turnaround times and more — with export." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+
+          {/* ======== TAILORING SECTION — home live, modules in Phase 5 ======== */}
+          <Route
+            path="/tailoring"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="tailoring.view">
+                  <TailoringHomePage />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/orders/new"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="tailoring.manage">
+                  <ModulePlaceholder title="New Tailoring Order" phase={5} icon={PlusCircle} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Capture the style, fabric source (customer's own or shop stock), full body measurements and the agreed price." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/orders"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="tailoring.view">
+                  <ModulePlaceholder title="Tailoring Orders" phase={5} icon={ClipboardList} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Track each garment from received → cutting → sewing → finishing → fitting → ready → delivered, assigned to a tailor." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/production"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="production.view">
+                  <ModulePlaceholder title="In-House Production" phase={5} icon={Factory} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Consume shop materials to produce finished items that become new sellable products — stock adjusts automatically." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/payments"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="tailoring.view">
+                  <ModulePlaceholder title="Tailoring Payments" phase={5} icon={CreditCard} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Deposits, balance collections and receipts for tailoring orders — fully tied into the money ledger." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/customers"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="tailoring.view">
+                  <ModulePlaceholder title="Tailoring Customers" phase={5} icon={Users} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Tailoring customer records, saved measurement profiles and full order history per customer." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/reports"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="tailoring.view">
+                  <ModulePlaceholder title="Tailoring Reports" phase={5} icon={FileBarChart} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Section reports: orders by status, tailor performance, revenue, delivery punctuality and more — with export." />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
 
