@@ -279,6 +279,7 @@ export const productsRouter = createRouter({
           movementType: "STOCK_IN",
           quantity: input.openingStock,
           unit: input.unitOfMeasure,
+          branchId: ctx.activeBranchId,
           referenceType: "PRODUCT",
           referenceId: row.id,
           reason: "Opening stock",
