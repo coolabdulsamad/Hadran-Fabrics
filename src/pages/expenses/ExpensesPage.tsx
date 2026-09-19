@@ -218,7 +218,7 @@ export default function ExpensesPage() {
         description="Every naira the business spends — rent, salaries, supplies and more."
         actions={
           <>
-            <ExportButton filename="expenses" sheetName="Expenses" columns={exportColumns} rows={async () => ((await exportQuery.refetch()).data ?? []) as ExpenseRow[]} />
+            <ExportButton filename="expenses" sheetName="Expenses" columns={exportColumns} rows={async () => (((await exportQuery.refetch()).data ?? []) as unknown as ExpenseRow[])} />
             <Button variant="outline" onClick={handlePrint} disabled={printBusy} className="gap-2 border-gold-500/40 text-navy-800 hover:bg-gold-50">
               {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4 text-gold-600" />}
               Print

@@ -1,13 +1,5 @@
 import { Navigate, Route, Routes } from "react-router";
 import { Toaster } from "sonner";
-import {
-  ClipboardList,
-  CreditCard,
-  Factory,
-  FileBarChart,
-  PlusCircle,
-  Users,
-} from "lucide-react";
 
 import LoginPage from "./pages/auth/LoginPage";
 import DashboardPage from "./pages/dashboard/DashboardPage";
@@ -20,9 +12,17 @@ import LaundryPaymentsPage from "./pages/laundry/LaundryPaymentsPage";
 import LaundryCustomersPage from "./pages/laundry/LaundryCustomersPage";
 import LaundryReportsPage from "./pages/laundry/LaundryReportsPage";
 import TailoringHomePage from "./pages/tailoring/TailoringHomePage";
+import TailoringOrdersPage from "./pages/tailoring/TailoringOrdersPage";
+import TailoringNewOrderPage from "./pages/tailoring/TailoringNewOrderPage";
+import TailoringOrderDetailPage from "./pages/tailoring/TailoringOrderDetailPage";
+import TailoringPaymentsPage from "./pages/tailoring/TailoringPaymentsPage";
+import TailoringCustomersPage from "./pages/tailoring/TailoringCustomersPage";
+import TailoringReportsPage from "./pages/tailoring/TailoringReportsPage";
+import ProductionRunsPage from "./pages/tailoring/ProductionRunsPage";
+import ProductionNewRunPage from "./pages/tailoring/ProductionNewRunPage";
+import ProductionRunDetailPage from "./pages/tailoring/ProductionRunDetailPage";
 import ExpensesPage from "./pages/expenses/ExpensesPage";
 import MoneyPage from "./pages/money/MoneyPage";
-import { ModulePlaceholder } from "./components/common/ModulePlaceholder";
 import { NotFoundPage } from "./pages/errors/NotFoundPage";
 
 // Phase 4 — Catalog & Inventory (live)
@@ -435,7 +435,7 @@ export default function App() {
             }
           />
 
-          {/* ======== TAILORING SECTION — home live, modules in Phase 5 ======== */}
+          {/* ======== TAILORING SECTION — Phase 5: orders, measurements, production ======== */}
           <Route
             path="/tailoring"
             element={
@@ -451,7 +451,7 @@ export default function App() {
             element={
               <RequireSection section="TAILORING">
                 <RequirePermission permission="tailoring.manage">
-                  <ModulePlaceholder title="New Tailoring Order" phase={5} icon={PlusCircle} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Capture the style, fabric source (customer's own or shop stock), full body measurements and the agreed price." />
+                  <TailoringNewOrderPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -461,7 +461,17 @@ export default function App() {
             element={
               <RequireSection section="TAILORING">
                 <RequirePermission permission="tailoring.view">
-                  <ModulePlaceholder title="Tailoring Orders" phase={5} icon={ClipboardList} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Track each garment from received → cutting → sewing → finishing → fitting → ready → delivered, assigned to a tailor." />
+                  <TailoringOrdersPage />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/orders/:id"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="tailoring.view">
+                  <TailoringOrderDetailPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -471,7 +481,27 @@ export default function App() {
             element={
               <RequireSection section="TAILORING">
                 <RequirePermission permission="production.view">
-                  <ModulePlaceholder title="In-House Production" phase={5} icon={Factory} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Consume shop materials to produce finished items that become new sellable products — stock adjusts automatically." />
+                  <ProductionRunsPage />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/production/new"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="production.manage">
+                  <ProductionNewRunPage />
+                </RequirePermission>
+              </RequireSection>
+            }
+          />
+          <Route
+            path="/tailoring/production/:id"
+            element={
+              <RequireSection section="TAILORING">
+                <RequirePermission permission="production.view">
+                  <ProductionRunDetailPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -481,7 +511,7 @@ export default function App() {
             element={
               <RequireSection section="TAILORING">
                 <RequirePermission permission="tailoring.view">
-                  <ModulePlaceholder title="Tailoring Payments" phase={5} icon={CreditCard} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Deposits, balance collections and receipts for tailoring orders — fully tied into the money ledger." />
+                  <TailoringPaymentsPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -491,7 +521,7 @@ export default function App() {
             element={
               <RequireSection section="TAILORING">
                 <RequirePermission permission="tailoring.view">
-                  <ModulePlaceholder title="Tailoring Customers" phase={5} icon={Users} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Tailoring customer records, saved measurement profiles and full order history per customer." />
+                  <TailoringCustomersPage />
                 </RequirePermission>
               </RequireSection>
             }
@@ -501,7 +531,7 @@ export default function App() {
             element={
               <RequireSection section="TAILORING">
                 <RequirePermission permission="tailoring.view">
-                  <ModulePlaceholder title="Tailoring Reports" phase={5} icon={FileBarChart} backTo="/tailoring" backLabel="Back to Tailoring Home" description="Section reports: orders by status, tailor performance, revenue, delivery punctuality and more — with export." />
+                  <TailoringReportsPage />
                 </RequirePermission>
               </RequireSection>
             }
