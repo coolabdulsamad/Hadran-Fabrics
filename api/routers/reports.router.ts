@@ -1,9 +1,18 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { and, count, desc, eq, gte, lt, ne, sql, type SQL } from "drizzle-orm";
 import { createRouter } from "../middleware";
-import { permissionProcedure } from "../trpc";
+import { authedProcedure, permissionProcedure } from "../trpc";
 import { getDb } from "../queries/connection";
 import { categories, customers, products, saleItems, salePayments, sales, users } from "@db/schema";
+import { SECTIONS } from "@contracts/constants";
+import {
+  SECTION_VIEW_PERMISSION,
+  assertSectionAccess,
+  resolveRange,
+  toCatalog,
+} from "../reports/shared";
+import { REPORT_DEFS, findReportDef } from "../reports/report-defs";
 
 /**
  * HADRAN FABRICS MALL — reports & analytics router (Manager and above).
@@ -397,5 +406,47 @@ export const reportsRouter = createRouter({
       }
 
       return { filename: `hadran-${input.dataset}-${new Date().toISOString().slice(0, 10)}.csv`, csv: lines.join("\n") };
+    }),
+
+  /* ------------------- PHASE 8: REPORT STUDIO ENGINE -------------------- */
+
+  /** Catalog of report types the caller is allowed to see, grouped by section. */
+  catalog: authedProcedure.query(({ ctx }) => ({
+    reports: REPORT_DEFS.filter(
+      (d) => ctx.permissions.has(SECTION_VIEW_PERMISSION[d.section]) || ctx.permissions.has("reports.general"),
+    ).map(toCatalog),
+  })),
+
+  /** Run one report type with a date range + filter values. */
+  run: authedProcedure
+    .input(
+      z.object({
+        section: z.enum(SECTIONS),
+        type: z.string().max(60),
+        dateFrom: z.string().datetime().optional(),
+        dateTo: z.string().datetime().optional(),
+        filters: z.record(z.string(), z.string()).optional(),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      assertSectionAccess(ctx.permissions, input.section);
+      const def = findReportDef(input.type, input.section);
+      if (!def) {
+        throw new TRPCError({ code: "NOT_FOUND", message: `Unknown report type "${input.type}" for ${input.section}.` });
+      }
+      const range = resolveRange(input.dateFrom, input.dateTo);
+      const result = await def.run({
+        db: getDb(),
+        activeBranch: ctx.activeBranch,
+        filters: input.filters ?? {},
+        range,
+      });
+      return {
+        title: def.label,
+        section: def.section,
+        type: def.type,
+        generatedAt: new Date().toISOString(),
+        ...result,
+      };
     }),
 });
