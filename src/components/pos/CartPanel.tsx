@@ -1,4 +1,5 @@
-import { Minus, Plus, Trash2, Percent, UserRound, PauseCircle, CreditCard, Eraser, Crown } from "lucide-react";
+import { useState } from "react";
+import { Minus, Plus, Trash2, Percent, UserRound, PauseCircle, CreditCard, Eraser, Crown, ReceiptText } from "lucide-react";
 import { useCartStore, computeTotals, type PosConfigSnapshot } from "@/store/cart-store";
 import type { CartLine } from "@contracts/pos";
 import { Button } from "@/components/ui/button";
@@ -8,10 +9,11 @@ import { UNIT_LABELS } from "@contracts/constants";
 import { cn } from "@/lib/utils";
 
 /**
- * HADRAN FABRICS MALL — POS cart panel.
- * Lines with quantity steppers (fractional yard support), item discounts,
- * customer chip, cart discount, full totals breakdown and the
- * Hold / Charge actions.
+ * HADRAN FABRICS MALL — supermarket cart panel (Phase 7).
+ * The dominant half of the terminal: receipt-style numbered lines with
+ * full product detail (image, SKU, unit price, measured-cut badge),
+ * steppers AND type-in quantities, item discounts, customer chip,
+ * complete totals breakdown and oversized Hold / Charge actions.
  */
 
 interface CartPanelProps {
@@ -26,6 +28,70 @@ interface CartPanelProps {
   onCharge: () => void;
   holding: boolean;
   charging: boolean;
+}
+
+/** Quantity box: steppers plus type-in entry (commits on blur/Enter). */
+function QtyInput({
+  line,
+  step,
+  onCommit,
+}: {
+  line: CartLine;
+  step: number;
+  onCommit: (qty: number) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+
+  const commit = () => {
+    if (text === null) return;
+    const n = Number(text);
+    if (Number.isFinite(n) && n > 0) {
+      onCommit(Number(Math.min(n, line.maxStock).toFixed(3)));
+    }
+    setText(null);
+  };
+
+  return (
+    <div className="flex items-center rounded-lg border border-border bg-card">
+      <button
+        type="button"
+        className="px-2.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
+        disabled={line.quantity <= step}
+        onClick={() => onCommit(Number((line.quantity - step).toFixed(3)))}
+        aria-label="Decrease quantity"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <input
+        data-no-scan
+        inputMode="decimal"
+        value={text ?? formatQty(line.quantity)}
+        onFocus={(e) => {
+          setText(String(line.quantity));
+          e.target.select();
+        }}
+        onChange={(e) => setText(e.target.value.replace(/[^0-9.]/g, ""))}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        className="h-9 w-16 border-x border-border bg-transparent text-center text-sm font-semibold tabular-nums outline-none focus:bg-gold-500/5"
+        aria-label={`Quantity of ${line.name}`}
+      />
+      <button
+        type="button"
+        className="px-2.5 py-1.5 text-muted-foreground hover:text-foreground disabled:opacity-40"
+        disabled={line.quantity >= line.maxStock}
+        onClick={() => onCommit(Number(Math.min(line.quantity + step, line.maxStock).toFixed(3)))}
+        aria-label="Increase quantity"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  );
 }
 
 export function CartPanel({
@@ -57,13 +123,18 @@ export function CartPanel({
   return (
     <div className="flex h-full min-h-0 flex-col rounded-2xl border border-gold-500/25 bg-card shadow-sm">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-navy-900">Current Sale</h2>
-          <p className="text-xs text-muted-foreground">
-            {lines.length} line{lines.length === 1 ? "" : "s"} • {formatQty(totals.itemCount)} item
-            {totals.itemCount === 1 ? "" : "s"}
-          </p>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-900 text-gold-400">
+            <ReceiptText className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-display text-lg font-semibold leading-tight text-navy-900">Current Sale</h2>
+            <p className="text-xs text-muted-foreground">
+              {lines.length} line{lines.length === 1 ? "" : "s"} • {formatQty(totals.itemCount)} item
+              {totals.itemCount === 1 ? "" : "s"}
+            </p>
+          </div>
         </div>
         {!empty && (
           <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={clear}>
@@ -74,7 +145,7 @@ export function CartPanel({
       </div>
 
       {/* Customer chip */}
-      <div className="border-b border-border px-4 py-2.5">
+      <div className="border-b border-border px-4 py-2.5 sm:px-5">
         <button
           type="button"
           onClick={onCustomerClick}
@@ -105,102 +176,94 @@ export function CartPanel({
         </button>
       </div>
 
-      {/* Lines */}
-      <div className="scrollbar-lux min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      {/* Lines — supermarket receipt style */}
+      <div className="scrollbar-lux min-h-0 flex-1 overflow-y-auto px-3 py-2 sm:px-4">
         {empty ? (
-          <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-2 text-muted-foreground">
-            <CreditCard className="h-9 w-9" />
+          <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 text-muted-foreground">
+            <CreditCard className="h-10 w-10" />
             <p className="text-sm font-medium">Cart is empty</p>
-            <p className="max-w-[220px] text-center text-xs">
-              Scan a barcode or tap products on the left to start a sale.
+            <p className="max-w-[260px] text-center text-xs leading-relaxed">
+              Scan a barcode or search on the left — items land here with their full details.
             </p>
           </div>
         ) : (
           <ul className="space-y-2">
-            {lines.map((l) => {
+            {lines.map((l, idx) => {
               const gross = l.unitPrice * l.quantity;
               const net = gross - l.discountAmount;
               const step = stepFor(l);
               return (
-                <li key={l.productId} className="rounded-xl border border-border bg-background/60 p-2.5">
-                  <div className="flex items-start gap-2.5">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-navy-900/5 font-display text-xs font-semibold text-gold-600">
-                      {l.imageUrl ? (
-                        <img src={l.imageUrl} alt={l.name} className="h-full w-full object-cover" />
-                      ) : (
-                        l.name.slice(0, 2).toUpperCase()
-                      )}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">{l.name}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {l.sku} • {formatCurrency(l.unitPrice)}/
-                        {UNIT_LABELS[l.unit as keyof typeof UNIT_LABELS] ?? l.unit}
-                        {l.isMeasuredCut && " • measured cut"}
-                      </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        {/* Qty stepper */}
-                        <div className="flex items-center rounded-lg border border-border">
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-muted-foreground hover:text-foreground disabled:opacity-40"
-                            disabled={l.quantity <= step}
-                            onClick={() => setQuantity(l.productId, Number((l.quantity - step).toFixed(3)))}
-                          >
-                            <Minus className="h-3.5 w-3.5" />
-                          </button>
-                          <span className="min-w-[52px] text-center text-sm font-semibold tabular-nums">
-                            {formatQty(l.quantity)}
-                          </span>
-                          <button
-                            type="button"
-                            className="px-2 py-1 text-muted-foreground hover:text-foreground disabled:opacity-40"
-                            disabled={l.quantity >= l.maxStock}
-                            onClick={() =>
-                              setQuantity(l.productId, Number(Math.min(l.quantity + step, l.maxStock).toFixed(3)))
-                            }
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <span className="text-[11px] text-muted-foreground">
-                          max {formatQty(l.maxStock)}
-                        </span>
-                        {canItemDiscount && l.discountEligible && (
-                          <button
-                            type="button"
-                            onClick={() => onItemDiscount(l)}
-                            className={cn(
-                              "flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors",
-                              l.discountAmount > 0
-                                ? "border-gold-500 bg-gold-500/15 text-gold-700"
-                                : "border-border text-muted-foreground hover:border-gold-500/50",
-                            )}
-                          >
-                            <Percent className="h-3 w-3" />
-                            {l.discountAmount > 0 ? `−${formatCurrency(l.discountAmount)}` : "Discount"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-sm font-semibold tabular-nums text-navy-900">
-                        {formatCurrency(net)}
+                <li
+                  key={l.productId}
+                  className="flex items-start gap-3 rounded-xl border border-border bg-background/60 p-3"
+                >
+                  {/* Line number */}
+                  <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-navy-900/5 font-mono text-[11px] font-semibold text-navy-800">
+                    {idx + 1}
+                  </span>
+
+                  {/* Image / monogram */}
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-navy-900/5 font-display text-sm font-semibold text-gold-600">
+                    {l.imageUrl ? (
+                      <img src={l.imageUrl} alt={l.name} className="h-full w-full object-cover" />
+                    ) : (
+                      l.name.slice(0, 2).toUpperCase()
+                    )}
+                  </span>
+
+                  {/* Details + controls */}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{l.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {l.sku} • {formatCurrency(l.unitPrice)}/
+                      {UNIT_LABELS[l.unit as keyof typeof UNIT_LABELS] ?? l.unit}
+                      {l.isMeasuredCut && " • measured cut"}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <QtyInput
+                        line={l}
+                        step={step}
+                        onCommit={(qty) => setQuantity(l.productId, qty)}
+                      />
+                      <span className="text-[11px] text-muted-foreground">
+                        {UNIT_LABELS[l.unit as keyof typeof UNIT_LABELS] ?? l.unit} · max {formatQty(l.maxStock)}
                       </span>
-                      {l.discountAmount > 0 && (
-                        <span className="text-[11px] text-muted-foreground line-through">
-                          {formatCurrency(gross)}
-                        </span>
+                      {canItemDiscount && l.discountEligible && (
+                        <button
+                          type="button"
+                          onClick={() => onItemDiscount(l)}
+                          className={cn(
+                            "flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors",
+                            l.discountAmount > 0
+                              ? "border-gold-500 bg-gold-500/15 text-gold-700"
+                              : "border-border text-muted-foreground hover:border-gold-500/50",
+                          )}
+                        >
+                          <Percent className="h-3 w-3" />
+                          {l.discountAmount > 0 ? `−${formatCurrency(l.discountAmount)}` : "Discount"}
+                        </button>
                       )}
-                      <button
-                        type="button"
-                        className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
-                        onClick={() => removeLine(l.productId)}
-                        aria-label={`Remove ${l.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
                     </div>
+                  </div>
+
+                  {/* Line total + remove */}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="font-display text-base font-semibold tabular-nums text-navy-900">
+                      {formatCurrency(net)}
+                    </span>
+                    {l.discountAmount > 0 && (
+                      <span className="text-[11px] text-muted-foreground line-through">
+                        {formatCurrency(gross)}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
+                      onClick={() => removeLine(l.productId)}
+                      aria-label={`Remove ${l.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </li>
               );
@@ -210,7 +273,7 @@ export function CartPanel({
       </div>
 
       {/* Totals + actions */}
-      <div className="border-t border-border px-4 py-3">
+      <div className="border-t border-border px-4 py-3 sm:px-5">
         <div className="space-y-1 text-sm">
           <div className="flex justify-between text-muted-foreground">
             <span>Subtotal</span>
@@ -262,7 +325,7 @@ export function CartPanel({
           <div className="gold-divider my-2" />
           <div className="flex items-end justify-between">
             <span className="font-display text-base font-semibold text-navy-900">Total</span>
-            <span className="font-display text-2xl font-bold tabular-nums text-navy-900">
+            <span className="font-display text-3xl font-bold tabular-nums text-navy-900">
               {formatCurrency(totals.grandTotal)}
             </span>
           </div>
@@ -271,7 +334,7 @@ export function CartPanel({
         <div className="mt-3 flex gap-2">
           <Button
             variant="outline"
-            className="flex-1"
+            className="h-12 flex-1"
             disabled={empty || !canHold || holding || charging}
             onClick={onHold}
           >
@@ -279,11 +342,11 @@ export function CartPanel({
             {holding ? "Holding…" : "Hold"}
           </Button>
           <Button
-            className="flex-[2] bg-gold-500 text-base font-semibold text-navy-950 hover:bg-gold-400"
+            className="h-12 flex-[2] bg-gold-500 text-lg font-bold text-navy-950 hover:bg-gold-400"
             disabled={empty || holding || charging}
             onClick={onCharge}
           >
-            <CreditCard className="mr-1.5 h-4 w-4" />
+            <CreditCard className="mr-1.5 h-5 w-5" />
             {charging ? "Processing…" : `Charge ${formatCurrency(totals.grandTotal)}`}
           </Button>
         </div>
