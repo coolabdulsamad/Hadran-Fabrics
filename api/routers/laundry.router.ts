@@ -12,6 +12,7 @@ import {
   createLaundryOrder,
 } from "../services/laundry.service";
 import { logAudit, requestMeta } from "../services/audit.service";
+import { branchScope } from "../services/branch.service";
 import {
   LAUNDRY_ORDER_STATUSES,
   LAUNDRY_SERVICE_TYPES,
@@ -37,8 +38,10 @@ const listInput = z.object({
   pageSize: z.number().int().min(5).max(200).default(25),
 });
 
-function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">): SQL[] {
+function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">, branch: Parameters<typeof branchScope>[1]): SQL[] {
   const filters: SQL[] = [];
+  const scope = branchScope(laundryOrders.branchId, branch);
+  if (scope) filters.push(scope);
   if (input.status) filters.push(eq(laundryOrders.status, input.status));
   if (input.paymentStatus) filters.push(eq(laundryOrders.paymentStatus, input.paymentStatus));
   if (input.priority) filters.push(eq(laundryOrders.priority, input.priority));
@@ -66,8 +69,9 @@ function startOfToday(): Date {
 export const laundryRouter = createRouter({
   /* ------------------------------ DASHBOARD ------------------------------ */
 
-  dashboard: permissionProcedure("laundry.view").query(async () => {
+  dashboard: permissionProcedure("laundry.view").query(async ({ ctx }) => {
     const db = getDb();
+    const orderScope = branchScope(laundryOrders.branchId, ctx.activeBranch);
     const today = startOfToday();
     const monthStart = startOfToday();
     monthStart.setDate(1);
@@ -77,6 +81,7 @@ export const laundryRouter = createRouter({
     const statusRows = await db
       .select({ status: laundryOrders.status, count: count() })
       .from(laundryOrders)
+      .where(orderScope)
       .groupBy(laundryOrders.status);
     const statusBoard = Object.fromEntries(statusRows.map((r) => [r.status, r.count]));
 
@@ -85,16 +90,19 @@ export const laundryRouter = createRouter({
     const [todayRevenue] = await db
       .select({ value: sql<string>`COALESCE(SUM(${laundryPayments.amount}), 0)` })
       .from(laundryPayments)
-      .where(gte(laundryPayments.createdAt, today));
+      .innerJoin(laundryOrders, eq(laundryPayments.orderId, laundryOrders.id))
+      .where(and(gte(laundryPayments.createdAt, today), orderScope));
     const [monthRevenue] = await db
       .select({ value: sql<string>`COALESCE(SUM(${laundryPayments.amount}), 0)` })
       .from(laundryPayments)
-      .where(gte(laundryPayments.createdAt, monthStart));
+      .innerJoin(laundryOrders, eq(laundryPayments.orderId, laundryOrders.id))
+      .where(and(gte(laundryPayments.createdAt, monthStart), orderScope));
 
     const [outstanding] = await db.execute(sql`
       SELECT COALESCE(SUM(total_amount - amount_paid), 0) AS balance
       FROM ${laundryOrders}
       WHERE ${laundryOrders.status} != 'CANCELLED'
+      ${orderScope ? sql`AND ${orderScope}` : sql``}
     `);
     const outstandingBalance = Number((outstanding as unknown as { balance: string }[])[0]?.balance ?? 0);
 
@@ -110,6 +118,7 @@ export const laundryRouter = createRouter({
       .from(laundryOrders)
       .where(
         and(
+          orderScope,
           sql`${laundryOrders.status} IN ('RECEIVED','WASHING','DRYING','IRONING','READY')`,
           sql`${laundryOrders.dueDate} IS NOT NULL`,
           sql`${laundryOrders.dueDate} <= CURDATE()`,
@@ -130,6 +139,7 @@ export const laundryRouter = createRouter({
         createdAt: laundryOrders.createdAt,
       })
       .from(laundryOrders)
+      .where(orderScope)
       .orderBy(desc(laundryOrders.createdAt))
       .limit(8);
 
@@ -138,7 +148,9 @@ export const laundryRouter = createRouter({
     const [dailyRows] = await db.execute(sql`
       SELECT DATE(${laundryPayments.createdAt}) AS day, SUM(${laundryPayments.amount}) AS total
       FROM ${laundryPayments}
+      INNER JOIN ${laundryOrders} ON ${laundryOrders.id} = ${laundryPayments.orderId}
       WHERE ${laundryPayments.createdAt} >= ${thirtyDaysAgo}
+      ${orderScope ? sql`AND ${orderScope}` : sql``}
       GROUP BY day
       ORDER BY day
     `);
@@ -161,9 +173,9 @@ export const laundryRouter = createRouter({
 
   /* ------------------------------ ORDER LIST ------------------------------ */
 
-  list: permissionProcedure("laundry.view").input(listInput).query(async ({ input }) => {
+  list: permissionProcedure("laundry.view").input(listInput).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
 
     const [totalRow] = await db.select({ value: count() }).from(laundryOrders).where(where);
@@ -199,9 +211,9 @@ export const laundryRouter = createRouter({
   }),
 
   /** All matching rows without paging — for CSV/Excel export and print. */
-  exportRows: permissionProcedure("laundry.view").input(listInput.omit({ page: true, pageSize: true })).query(async ({ input }) => {
+  exportRows: permissionProcedure("laundry.view").input(listInput.omit({ page: true, pageSize: true })).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
     const rows = await db
       .select({ order: laundryOrders, receivedByName: users.fullName })
@@ -286,7 +298,7 @@ export const laundryRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const result = await createLaundryOrder(input, ctx.user.id, ctx.user.branchId ?? null);
+      const result = await createLaundryOrder(input, ctx.user.id, ctx.activeBranchId);
       await logAudit({
         actorId: ctx.user.id,
         action: "laundry.create",
@@ -369,9 +381,11 @@ export const laundryRouter = createRouter({
         pageSize: z.number().int().min(5).max(200).default(25),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const filters: SQL[] = [];
+      const scope = branchScope(laundryOrders.branchId, ctx.activeBranch);
+      if (scope) filters.push(scope);
       if (input.method) filters.push(eq(laundryPayments.method, input.method));
       if (input.dateFrom) filters.push(gte(laundryPayments.createdAt, new Date(`${input.dateFrom}T00:00:00`)));
       if (input.dateTo) filters.push(lte(laundryPayments.createdAt, new Date(`${input.dateTo}T23:59:59`)));
@@ -421,9 +435,11 @@ export const laundryRouter = createRouter({
         search: z.string().max(120).optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const filters: SQL[] = [];
+      const scope = branchScope(laundryOrders.branchId, ctx.activeBranch);
+      if (scope) filters.push(scope);
       if (input.method) filters.push(eq(laundryPayments.method, input.method));
       if (input.dateFrom) filters.push(gte(laundryPayments.createdAt, new Date(`${input.dateFrom}T00:00:00`)));
       if (input.dateTo) filters.push(lte(laundryPayments.createdAt, new Date(`${input.dateTo}T23:59:59`)));
@@ -454,8 +470,9 @@ export const laundryRouter = createRouter({
   /** Laundry customers aggregated from order history (walk-ins included). */
   customers: permissionProcedure("laundry.view")
     .input(z.object({ search: z.string().max(120).optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
+      const custScope = branchScope(laundryOrders.branchId, ctx.activeBranch);
       const searchClause = input.search?.trim()
         ? sql`HAVING name LIKE ${`%${input.search.trim()}%`} OR phone LIKE ${`%${input.search.trim()}%`}`
         : sql``;
@@ -469,6 +486,7 @@ export const laundryRouter = createRouter({
           MAX(${laundryOrders.createdAt}) AS lastOrderAt
         FROM ${laundryOrders}
         WHERE ${laundryOrders.status} != 'CANCELLED'
+        ${custScope ? sql`AND ${custScope}` : sql``}
         GROUP BY ${laundryOrders.customerName}, ${laundryOrders.customerPhone}
         ${searchClause}
         ORDER BY spent DESC
@@ -488,11 +506,12 @@ export const laundryRouter = createRouter({
         dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
+      const repScope = branchScope(laundryOrders.branchId, ctx.activeBranch);
       const from = input.dateFrom ? new Date(`${input.dateFrom}T00:00:00`) : new Date(0);
       const to = input.dateTo ? new Date(`${input.dateTo}T23:59:59`) : new Date();
-      const inRange = and(gte(laundryOrders.createdAt, from), lte(laundryOrders.createdAt, to));
+      const inRange = and(repScope, gte(laundryOrders.createdAt, from), lte(laundryOrders.createdAt, to));
       const payInRange = and(gte(laundryPayments.createdAt, from), lte(laundryPayments.createdAt, to));
 
       const [totals] = await db
@@ -519,6 +538,7 @@ export const laundryRouter = createRouter({
         INNER JOIN ${laundryOrders} ON ${laundryOrderItems.orderId} = ${laundryOrders.id}
         WHERE ${laundryOrders.status} != 'CANCELLED'
           AND ${laundryOrders.createdAt} >= ${from} AND ${laundryOrders.createdAt} <= ${to}
+          ${repScope ? sql`AND ${repScope}` : sql``}
         GROUP BY serviceType
         ORDER BY revenue DESC
       `);
@@ -526,7 +546,9 @@ export const laundryRouter = createRouter({
       const [dailyRows] = await db.execute(sql`
         SELECT DATE(${laundryPayments.createdAt}) AS day, SUM(${laundryPayments.amount}) AS total
         FROM ${laundryPayments}
+        INNER JOIN ${laundryOrders} ON ${laundryOrders.id} = ${laundryPayments.orderId}
         WHERE ${payInRange}
+        ${repScope ? sql`AND ${repScope}` : sql``}
         GROUP BY day
         ORDER BY day
       `);
@@ -539,6 +561,7 @@ export const laundryRouter = createRouter({
         FROM ${laundryOrders}
         WHERE ${laundryOrders.status} != 'CANCELLED'
           AND ${laundryOrders.createdAt} >= ${from} AND ${laundryOrders.createdAt} <= ${to}
+          ${repScope ? sql`AND ${repScope}` : sql``}
         GROUP BY ${laundryOrders.customerName}, ${laundryOrders.customerPhone}
         ORDER BY spent DESC
         LIMIT 10
@@ -552,6 +575,7 @@ export const laundryRouter = createRouter({
         INNER JOIN ${users} ON ${laundryOrders.receivedBy} = ${users.id}
         WHERE ${laundryOrders.status} != 'CANCELLED'
           AND ${laundryOrders.createdAt} >= ${from} AND ${laundryOrders.createdAt} <= ${to}
+          ${repScope ? sql`AND ${repScope}` : sql``}
         GROUP BY ${users.fullName}
         ORDER BY billed DESC
       `);
@@ -562,6 +586,7 @@ export const laundryRouter = createRouter({
         FROM ${laundryOrders}
         WHERE ${laundryOrders.collectedAt} IS NOT NULL
           AND ${laundryOrders.createdAt} >= ${from} AND ${laundryOrders.createdAt} <= ${to}
+          ${repScope ? sql`AND ${repScope}` : sql``}
       `);
       const turnaround = (turnaroundRows as unknown as { avgHours: string | null; collectedCount: string }[])[0];
 
