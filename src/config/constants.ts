@@ -14,6 +14,8 @@ export const APP_ADDRESS =
 /** Role badge styling across the app. */
 export const ROLE_STYLES: Record<UserRole, { badge: string; dot: string }> = {
   SALES: { badge: "bg-sky-100 text-sky-800 border-sky-200", dot: "bg-sky-500" },
+  LAUNDRY: { badge: "bg-cyan-100 text-cyan-800 border-cyan-200", dot: "bg-cyan-500" },
+  TAILORING: { badge: "bg-violet-100 text-violet-800 border-violet-200", dot: "bg-violet-500" },
   MANAGER: { badge: "bg-emerald-100 text-emerald-800 border-emerald-200", dot: "bg-emerald-500" },
   ADMIN: { badge: "bg-gold-100 text-gold-800 border-gold-300", dot: "bg-gold-500" },
   SUPER_ADMIN: { badge: "bg-navy-100 text-navy-800 border-navy-200", dot: "bg-navy-700" },

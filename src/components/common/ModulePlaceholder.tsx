@@ -7,13 +7,22 @@ interface ModulePlaceholderProps {
   phase: number;
   description: string;
   icon?: LucideIcon;
+  backTo?: string;
+  backLabel?: string;
 }
 
 /**
  * Honest placeholder for modules scheduled in a later build phase.
  * Keeps navigation complete without faking functionality.
  */
-export function ModulePlaceholder({ title, phase, description, icon: Icon = Hammer }: ModulePlaceholderProps) {
+export function ModulePlaceholder({
+  title,
+  phase,
+  description,
+  icon: Icon = Hammer,
+  backTo = "/dashboard",
+  backLabel = "Back to Dashboard",
+}: ModulePlaceholderProps) {
   return (
     <div className="flex min-h-[60vh] items-center justify-center">
       <div className="card-lux-gold max-w-lg p-10 text-center">
@@ -28,7 +37,7 @@ export function ModulePlaceholder({ title, phase, description, icon: Icon = Hamm
         </p>
         <div className="mt-8">
           <Button asChild variant="outline" className="border-gold-500/40 text-navy-800 hover:bg-gold-50">
-            <Link to="/dashboard">Back to Dashboard</Link>
+            <Link to={backTo}>{backLabel}</Link>
           </Button>
         </div>
       </div>

@@ -18,6 +18,9 @@ export interface AuthUser {
   status: "ACTIVE" | "SUSPENDED";
   avatarUrl: string | null;
   staffCode: string | null;
+  branchId: number | null;
+  branchName: string | null;
+  branchCode: string | null;
   createdAt: string | Date;
   lastLoginAt: string | Date | null;
 }
@@ -27,7 +30,7 @@ interface AuthContextValue {
   permissions: ReadonlySet<string>;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<{ user: AuthUser }>;
   logout: () => Promise<void>;
   hasPermission: (key: string) => boolean;
   hasAnyPermission: (...keys: string[]) => boolean;
@@ -69,7 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (username: string, password: string) => {
-      await loginMutation.mutateAsync({ username, password });
+      const result = await loginMutation.mutateAsync({ username, password });
+      return { user: result.user as AuthUser };
     },
     [loginMutation],
   );

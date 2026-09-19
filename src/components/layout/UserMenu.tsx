@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { ChevronDown, LogOut, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, UserRound, ArrowLeftRight } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,12 +10,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { useSection } from "@/hooks/use-section";
 import { RoleBadge } from "@/components/common/RoleBadge";
 import { initials } from "@/lib/format";
 
 /** Top-right user chip: identity, profile link and sign out. */
 export function UserMenu() {
   const { user, logout } = useAuth();
+  const { canSwitch } = useSection();
   const navigate = useNavigate();
 
   if (!user) return null;
@@ -64,6 +66,12 @@ export function UserMenu() {
           <UserRound className="h-4 w-4 text-gold-600" />
           My Profile
         </DropdownMenuItem>
+        {canSwitch && (
+          <DropdownMenuItem onClick={() => navigate("/sections")} className="cursor-pointer gap-2">
+            <ArrowLeftRight className="h-4 w-4 text-gold-600" />
+            Switch Section
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={handleLogout}

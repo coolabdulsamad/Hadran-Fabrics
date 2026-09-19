@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -18,21 +19,36 @@ const TONES = {
   red: "bg-red-100 text-red-700",
 } as const;
 
-/** Longer amounts get a smaller font so the FULL value always fits — never truncated. */
-function valueSize(value: string): string {
-  const len = value.length;
-  if (len > 16) return "text-sm";
-  if (len > 12) return "text-base";
-  if (len > 9) return "text-lg";
-  return "text-xl";
-}
+const MAX_PX = 20; // ~text-xl
+const MIN_PX = 11;
 
 /**
  * KPI stat card used on the dashboard and report pages.
- * Values auto-shrink to fit and never truncate; hovering the card
- * shows the full value + details in a tooltip.
+ * The value auto-fits its container: it shrinks pixel-by-pixel until the
+ * FULL value fits on one line — it never wraps mid-number and never
+ * truncates. Hovering the card shows the full value + details in a tooltip.
  */
 export function StatCard({ icon: Icon, label, value, hint, tone = "navy", className }: StatCardProps) {
+  const valueRef = useRef<HTMLParagraphElement>(null);
+
+  useLayoutEffect(() => {
+    const el = valueRef.current;
+    if (!el) return;
+    const fit = () => {
+      let size = MAX_PX;
+      el.style.fontSize = `${size}px`;
+      // shrink until the whole value fits on one line (or we hit the floor)
+      while (size > MIN_PX && el.scrollWidth > el.clientWidth + 1) {
+        size -= 0.5;
+        el.style.fontSize = `${size}px`;
+      }
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [value]);
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -43,10 +59,9 @@ export function StatCard({ icon: Icon, label, value, hint, tone = "navy", classN
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
             <p
-              className={cn(
-                "mt-0.5 break-words font-display font-bold leading-tight text-navy-900",
-                valueSize(value),
-              )}
+              ref={valueRef}
+              className="mt-0.5 whitespace-nowrap font-display font-bold leading-tight text-navy-900"
+              style={{ fontSize: MAX_PX }}
             >
               {value}
             </p>
