@@ -1,5 +1,8 @@
 import type {
   StockMovementType,
+  LaundryOrderStatus,
+  LaundryServiceType,
+  OrderPaymentStatus,
   SaleStatus,
   ReturnStatus,
   ReturnType,
@@ -119,4 +122,29 @@ export const MONEY_SOURCE_LABELS: Record<MoneySourceType, string> = {
   TAILORING_PAYMENT: "Tailoring Payment",
   MANUAL_IN: "Manual Money In",
   MANUAL_OUT: "Manual Money Out",
+};
+
+export const LAUNDRY_STATUS_LABELS: Record<LaundryOrderStatus, string> = {
+  RECEIVED: "Received",
+  WASHING: "Washing",
+  DRYING: "Drying",
+  IRONING: "Ironing",
+  READY: "Ready for Pickup",
+  COLLECTED: "Collected",
+  CANCELLED: "Cancelled",
+};
+
+export const LAUNDRY_SERVICE_LABELS: Record<LaundryServiceType, string> = {
+  WASH: "Wash Only",
+  DRY_CLEAN: "Dry Clean",
+  IRON: "Iron Only",
+  WASH_IRON: "Wash & Iron",
+  STAIN_REMOVAL: "Stain Removal",
+  REPAIR: "Repair",
+};
+
+export const ORDER_PAYMENT_STATUS_LABELS: Record<OrderPaymentStatus, string> = {
+  UNPAID: "Unpaid",
+  PART_PAID: "Part Paid",
+  PAID: "Paid",
 };

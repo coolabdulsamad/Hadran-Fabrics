@@ -211,6 +211,55 @@ export const LAUNDRY_SERVICE_TYPES = [
 ] as const;
 export type LaundryServiceType = (typeof LAUNDRY_SERVICE_TYPES)[number];
 
+/** Preset garment types for fast order intake (staff can also type a custom one). */
+export const LAUNDRY_GARMENT_TYPES = [
+  "Agbada",
+  "Senator",
+  "Kaftan",
+  "Suit",
+  "Shirt",
+  "Trouser",
+  "Gown",
+  "Blouse",
+  "Skirt",
+  "Buba & Wrapper",
+  "Bedsheet",
+  "Duvet",
+  "Curtain",
+  "Towel",
+  "Cap",
+  "Hijab / Scarf",
+  "Other",
+] as const;
+
+/**
+ * Suggested default unit prices (₦) per garment for a standard Wash & Iron.
+ * Purely a starting point at intake — staff adjust per order. Dry-clean and
+ * express jobs typically price higher; the form leaves that to the staff.
+ */
+export const LAUNDRY_PRICE_GUIDE: Record<string, number> = {
+  Agbada: 3500,
+  Senator: 2500,
+  Kaftan: 2000,
+  Suit: 4000,
+  Shirt: 800,
+  Trouser: 1000,
+  Gown: 2500,
+  Blouse: 800,
+  Skirt: 1000,
+  "Buba & Wrapper": 3000,
+  Bedsheet: 1500,
+  Duvet: 5000,
+  Curtain: 3000,
+  Towel: 700,
+  Cap: 500,
+  "Hijab / Scarf": 600,
+  Other: 1000,
+};
+
+/** Terminal statuses — no further workflow moves allowed. */
+export const LAUNDRY_TERMINAL_STATUSES = ["COLLECTED", "CANCELLED"] as const;
+
 // ---------- Tailoring ----------
 export const TAILORING_ORDER_STATUSES = [
   "RECEIVED",
