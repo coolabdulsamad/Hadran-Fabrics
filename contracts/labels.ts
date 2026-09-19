@@ -16,6 +16,8 @@ import type {
   TailoringOrderStatus,
   FabricSource,
   ProductionStatus,
+  BranchStatus,
+  TransferStatus,
 } from "./constants";
 
 /** Human-readable labels for domain enums (shared frontend ↔ backend). */
@@ -173,4 +175,18 @@ export const ORDER_PAYMENT_STATUS_LABELS: Record<OrderPaymentStatus, string> = {
   UNPAID: "Unpaid",
   PART_PAID: "Part Paid",
   PAID: "Paid",
+};
+
+export const BRANCH_STATUS_LABELS: Record<BranchStatus, string> = {
+  ACTIVE: "Active",
+  INACTIVE: "Inactive",
+};
+
+export const TRANSFER_STATUS_LABELS: Record<TransferStatus, string> = {
+  PENDING_APPROVAL: "Pending Approval",
+  APPROVED: "Approved",
+  IN_TRANSIT: "In Transit",
+  RECEIVED: "Received",
+  REJECTED: "Rejected",
+  CANCELLED: "Cancelled",
 };

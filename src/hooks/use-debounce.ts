@@ -1,2 +1,16 @@
-// HADRAN FABRICS MALL — placeholder (code arrives in its build phase)
-export {}
+import { useEffect, useState } from "react";
+
+/**
+ * Debounce a fast-changing value (search boxes) so queries fire only
+ * after the user pauses typing.
+ */
+export function useDebounce<T>(value: T, delayMs = 300): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+
+  return debounced;
+}
