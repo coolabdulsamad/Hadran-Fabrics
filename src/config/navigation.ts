@@ -32,6 +32,8 @@ import {
   Factory,
   Wallet,
   Scale,
+  Building2,
+  ArrowRightLeft,
   type LucideIcon,
 } from "lucide-react";
 import type { Section } from "@contracts/constants";
@@ -153,6 +155,15 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "Payments", path: "/tailoring/payments", icon: CreditCard, permission: "tailoring.view" },
       { label: "Customers", path: "/tailoring/customers", icon: Users, permission: "tailoring.view" },
       { label: "Tailoring Reports", path: "/tailoring/reports", icon: FileBarChart, permission: "tailoring.view" },
+    ],
+  },
+
+  /* ============================ BRANCHES (SHARED) ============================ */
+  {
+    title: "Branches",
+    items: [
+      { label: "Branches", path: "/branches", icon: Building2, permission: "branches.view" },
+      { label: "Stock Transfers", path: "/transfers", icon: ArrowRightLeft, permission: "transfers.view" },
     ],
   },
 

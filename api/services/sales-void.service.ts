@@ -44,6 +44,7 @@ export async function voidSale(
           productId: item.productId,
           movementType: "SALE_VOID_REVERSAL",
           quantity: restoreQty,
+          branchId: sale.branchId ?? null,
           referenceType: "SALE",
           referenceId: saleId,
           reason: `Void ${sale.receiptNo} — ${reason}`,
