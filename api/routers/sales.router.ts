@@ -14,6 +14,7 @@ import {
   users,
 } from "@db/schema";
 import { recordMovement } from "../services/inventory.service";
+import { netPayments, recordMoneyMovement } from "../services/money.service";
 import { voidSale } from "../services/sales-void.service";
 import { isApprovalGated, submitApproval } from "../services/approvals.service";
 import { logAudit, requestMeta } from "../services/audit.service";
@@ -324,6 +325,25 @@ export const salesRouter = createRouter({
             reference: p.reference ?? null,
           })),
         );
+
+        // money ledger — one IN row per netted payment leg
+        for (const leg of netPayments(input.payments, grandTotal, changeGiven)) {
+          await recordMoneyMovement(
+            {
+              direction: "IN",
+              section: "SALES",
+              branchId: ctx.user.branchId ?? null,
+              sourceType: "SALE",
+              sourceId: saleRow.id,
+              sourceRef: receiptNo,
+              amount: leg.amount,
+              paymentMethod: leg.method,
+              note: `Sale ${receiptNo}`,
+              createdBy: ctx.user.id,
+            },
+            tx,
+          );
+        }
 
         // stock ledger — one signed movement per line
         for (const l of lines) {
