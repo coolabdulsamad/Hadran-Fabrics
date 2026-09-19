@@ -12,6 +12,7 @@ import {
   startProductionRun,
 } from "../services/production.service";
 import { logAudit, requestMeta } from "../services/audit.service";
+import { branchScope } from "../services/branch.service";
 import { PRODUCTION_STATUSES, UNITS } from "@contracts/constants";
 
 /**
@@ -30,8 +31,10 @@ const listInput = z.object({
   pageSize: z.number().int().min(5).max(200).default(25),
 });
 
-function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">): SQL[] {
+function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">, branch: Parameters<typeof branchScope>[1]): SQL[] {
   const filters: SQL[] = [];
+  const scope = branchScope(productionOrders.branchId, branch);
+  if (scope) filters.push(scope);
   if (input.status) filters.push(eq(productionOrders.status, input.status));
   if (input.dateFrom) filters.push(gte(productionOrders.createdAt, new Date(`${input.dateFrom}T00:00:00`)));
   if (input.dateTo) filters.push(lte(productionOrders.createdAt, new Date(`${input.dateTo}T23:59:59`)));
@@ -45,11 +48,13 @@ function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize"
 export const productionRouter = createRouter({
   /* ------------------------------ SUMMARY ------------------------------ */
 
-  summary: permissionProcedure("production.view").query(async () => {
+  summary: permissionProcedure("production.view").query(async ({ ctx }) => {
     const db = getDb();
+    const scope = branchScope(productionOrders.branchId, ctx.activeBranch);
     const statusRows = await db
       .select({ status: productionOrders.status, count: count() })
       .from(productionOrders)
+      .where(scope)
       .groupBy(productionOrders.status);
     const board = Object.fromEntries(statusRows.map((r) => [r.status, r.count]));
 
@@ -62,6 +67,7 @@ export const productionRouter = createRouter({
       FROM ${productionOrders}
       WHERE ${productionOrders.status} = 'COMPLETED'
         AND ${productionOrders.completedAt} >= ${monthStart}
+        ${scope ? sql`AND ${scope}` : sql``}
     `);
     const month = (monthRows as unknown as { runs: string; units: string }[])[0];
 
@@ -74,9 +80,9 @@ export const productionRouter = createRouter({
 
   /* ------------------------------ LIST ------------------------------ */
 
-  list: permissionProcedure("production.view").input(listInput).query(async ({ input }) => {
+  list: permissionProcedure("production.view").input(listInput).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
 
     const [totalRow] = await db
@@ -192,7 +198,7 @@ export const productionRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const result = await createProductionRun(input, ctx.user.id, ctx.user.branchId ?? null);
+      const result = await createProductionRun(input, ctx.user.id, ctx.activeBranchId);
       await logAudit({
         actorId: ctx.user.id,
         action: "production.create",

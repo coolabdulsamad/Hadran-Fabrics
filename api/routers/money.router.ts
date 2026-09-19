@@ -6,6 +6,7 @@ import { getDb } from "../queries/connection";
 import { moneyMovements, users } from "@db/schema";
 import { recordMoneyMovement } from "../services/money.service";
 import { logAudit, requestMeta } from "../services/audit.service";
+import { branchScope } from "../services/branch.service";
 import {
   MONEY_DIRECTIONS,
   MONEY_SOURCE_TYPES,
@@ -31,8 +32,10 @@ const listInput = z.object({
   pageSize: z.number().int().min(5).max(200).default(25),
 });
 
-function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">): SQL[] {
+function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">, branch: Parameters<typeof branchScope>[1]): SQL[] {
   const filters: SQL[] = [];
+  const scope = branchScope(moneyMovements.branchId, branch);
+  if (scope) filters.push(scope);
   if (input.direction) filters.push(eq(moneyMovements.direction, input.direction));
   if (input.sourceType) filters.push(eq(moneyMovements.sourceType, input.sourceType));
   if (input.section) filters.push(eq(moneyMovements.section, input.section));
@@ -49,9 +52,9 @@ function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize"
 }
 
 export const moneyRouter = createRouter({
-  list: permissionProcedure("money.view").input(listInput).query(async ({ input }) => {
+  list: permissionProcedure("money.view").input(listInput).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
 
     const [totalRow] = await db.select({ value: count() }).from(moneyMovements).where(where);
@@ -73,9 +76,9 @@ export const moneyRouter = createRouter({
   }),
 
   /** All matching rows without paging — for CSV/Excel export and print. */
-  exportRows: permissionProcedure("money.view").input(listInput.omit({ page: true, pageSize: true })).query(async ({ input }) => {
+  exportRows: permissionProcedure("money.view").input(listInput.omit({ page: true, pageSize: true })).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
     const rows = await db
       .select({ movement: moneyMovements, createdByName: users.fullName })
@@ -88,8 +91,9 @@ export const moneyRouter = createRouter({
   }),
 
   /** KPIs + 30-day in/out series + breakdowns for the ledger dashboard. */
-  summary: permissionProcedure("money.view").query(async () => {
+  summary: permissionProcedure("money.view").query(async ({ ctx }) => {
     const db = getDb();
+    const scope = branchScope(moneyMovements.branchId, ctx.activeBranch);
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const monthStart = new Date();
@@ -105,7 +109,7 @@ export const moneyRouter = createRouter({
           total: sql<string>`COALESCE(SUM(${moneyMovements.amount}), 0)`,
         })
         .from(moneyMovements)
-        .where(gte(moneyMovements.createdAt, from))
+        .where(and(gte(moneyMovements.createdAt, from), scope))
         .groupBy(moneyMovements.direction);
       const inTotal = Number(rows.find((r) => r.direction === "IN")?.total ?? 0);
       const outTotal = Number(rows.find((r) => r.direction === "OUT")?.total ?? 0);
@@ -124,6 +128,7 @@ export const moneyRouter = createRouter({
       SELECT DATE(${moneyMovements.createdAt}) AS day, ${moneyMovements.direction} AS direction, SUM(${moneyMovements.amount}) AS total
       FROM ${moneyMovements}
       WHERE ${moneyMovements.createdAt} >= ${thirtyDaysAgo}
+        ${scope ? sql`AND ${scope}` : sql``}
       GROUP BY day, direction
       ORDER BY day
     `);
@@ -137,7 +142,7 @@ export const moneyRouter = createRouter({
         count: count(),
       })
       .from(moneyMovements)
-      .where(gte(moneyMovements.createdAt, monthStart))
+      .where(and(gte(moneyMovements.createdAt, monthStart), scope))
       .groupBy(moneyMovements.sourceType, moneyMovements.direction)
       .orderBy(desc(sql`SUM(${moneyMovements.amount})`));
 
@@ -148,7 +153,7 @@ export const moneyRouter = createRouter({
         total: sql<string>`SUM(${moneyMovements.amount})`,
       })
       .from(moneyMovements)
-      .where(gte(moneyMovements.createdAt, monthStart))
+      .where(and(gte(moneyMovements.createdAt, monthStart), scope))
       .groupBy(moneyMovements.section, moneyMovements.direction);
 
     return { today, month, allTime, daily: daily.map((d) => ({ day: d.day, direction: d.direction, total: Number(d.total) })), bySource: bySource.map((s) => ({ sourceType: s.sourceType, direction: s.direction, total: Number(s.total), count: s.count })), bySection: bySection.map((s) => ({ section: s.section, direction: s.direction, total: Number(s.total) })) };
@@ -169,7 +174,7 @@ export const moneyRouter = createRouter({
       const id = await recordMoneyMovement({
         direction: input.direction,
         section: input.section,
-        branchId: ctx.user.branchId ?? null,
+        branchId: ctx.activeBranchId,
         sourceType: input.direction === "IN" ? "MANUAL_IN" : "MANUAL_OUT",
         amount: input.amount,
         paymentMethod: input.paymentMethod,
