@@ -11,6 +11,12 @@
 
 import type { Section } from "./constants";
 
+/**
+ * Where a report/analysis lives. The three business sections plus GENERAL —
+ * Phase 9 cross-section / cross-branch reports that merge all records.
+ */
+export type ReportScope = Section | "GENERAL";
+
 /* ------------------------------- filters ------------------------------- */
 
 export type ReportFilterKind = "select" | "branch" | "category" | "text" | "number";
@@ -93,7 +99,7 @@ export interface ReportTable {
 export interface ReportResult {
   title: string;
   subtitle?: string;
-  section: Section;
+  section: ReportScope;
   type: string;
   generatedAt: string;
   rangeLabel?: string;
@@ -106,7 +112,7 @@ export interface ReportResult {
 
 export interface ReportCatalogItem {
   type: string;
-  section: Section;
+  section: ReportScope;
   label: string;
   description: string;
   /** Whether the date-range presets apply to this type. */

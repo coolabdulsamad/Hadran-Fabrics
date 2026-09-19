@@ -22,6 +22,7 @@ import { permissionsRouter } from "./routers/permissions.router";
 import { approvalsRouter } from "./routers/approvals.router";
 import { reportsRouter } from "./routers/reports.router";
 import { analyticsRouter } from "./routers/analytics.router";
+import { generalRouter } from "./routers/general.router";
 import { chatRouter } from "./routers/chat.router";
 import { aiRouter } from "./routers/ai.router";
 import { settingsRouter } from "./routers/settings.router";
@@ -54,6 +55,7 @@ export const appRouter = createRouter({
   approvals: approvalsRouter,
   reports: reportsRouter,
   analytics: analyticsRouter,
+  general: generalRouter,
   chat: chatRouter,
   ai: aiRouter,
   settings: settingsRouter,

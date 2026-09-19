@@ -34,6 +34,7 @@ import {
   Scale,
   Building2,
   ArrowRightLeft,
+  Globe2,
   type LucideIcon,
 } from "lucide-react";
 import type { Section } from "@contracts/constants";
@@ -125,6 +126,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Reports", path: "/reports", icon: FileBarChart, permission: "reports.view" },
       { label: "Analytics", path: "/analytics", icon: PieChart, permission: "analytics.view" },
+      { label: "General Reports", path: "/reports/general", icon: Globe2, permission: "reports.general" },
       { label: "AI Assistant", path: "/ai", icon: Bot, permission: "ai.use" },
     ],
   },
