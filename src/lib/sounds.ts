@@ -82,3 +82,42 @@ export function playSound(name: SoundName) {
     /* audio is best-effort */
   }
 }
+
+/* ------------------------- POS scanner beeps ------------------------- */
+
+let audioCtx: AudioContext | null = null;
+
+function getAudioCtx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const AC =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return null;
+  if (!audioCtx) audioCtx = new AC();
+  if (audioCtx.state === "suspended") void audioCtx.resume().catch(() => undefined);
+  return audioCtx;
+}
+
+/**
+ * Supermarket-style scanner beep (synthesised — no asset needed).
+ * "scan" = short high beep, "error" = low buzz. Best-effort; silent when muted.
+ */
+export function playBeep(kind: "scan" | "error" = "scan") {
+  if (soundsMuted()) return;
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = kind === "scan" ? 1760 : 220;
+    const dur = kind === "scan" ? 0.09 : 0.25;
+    gain.gain.setValueAtTime(kind === "scan" ? 0.06 : 0.09, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + dur);
+  } catch {
+    /* audio is best-effort */
+  }
+}

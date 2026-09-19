@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency, formatQty } from "@/lib/format";
 import { UNIT_LABELS } from "@contracts/constants";
-import type { PosProduct } from "./ProductSearchPanel";
+import type { PosProduct } from "./ScanSearchPanel";
 import { cn } from "@/lib/utils";
 
 /**
