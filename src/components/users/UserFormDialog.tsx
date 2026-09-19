@@ -30,6 +30,8 @@ import { USER_ROLES, ROLE_LABELS, type UserRole } from "@contracts/roles";
 
 const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   SALES: "POS terminal only — sell, hold carts, view own receipts.",
+  LAUNDRY: "Laundry section — receive garments, run the washing workflow, take payments.",
+  TAILORING: "Tailoring section — measurements, sewing workflow, and production runs.",
   MANAGER: "Everything sales does, plus inventory, purchases, reports — big actions need admin approval.",
   ADMIN: "Everything manager does, without approval gates, plus staff, permissions and sales settings.",
   SUPER_ADMIN: "Full control including system settings — the developer/owner role.",

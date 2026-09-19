@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Navigate, useLocation, useNavigate } from "react-router";
+import { Navigate, useLocation } from "react-router";
 import { toast } from "sonner";
 import {
   Scissors,
@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { landingRouteFor } from "@/store/section-store";
 import { LoadingScreen } from "@/components/common/LoadingScreen";
 import { APP_ADDRESS, APP_MOTTO, APP_TAGLINE } from "@/config/constants";
 
@@ -28,18 +29,19 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 const HIGHLIGHTS = [
-  { icon: ShieldCheck, text: "Role-based access — Sales, Manager, Admin & Super Admin" },
+  { icon: ShieldCheck, text: "Role-based access — Sales, Laundry, Tailoring & Management" },
   { icon: Barcode, text: "Barcode scanning & measured fabric sales by the yard" },
   { icon: Printer, text: "Instant 80mm thermal receipts at the till" },
 ];
 
 export default function LoginPage() {
-  const { login, isAuthenticated, isLoading } = useAuth();
-  const navigate = useNavigate();
+  const { user, login, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Where to send the user once the session flips to authenticated.
+  const [target, setTarget] = useState<string | null>(null);
 
   const {
     register,
@@ -48,17 +50,22 @@ export default function LoginPage() {
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
 
   if (isLoading) return <LoadingScreen label="Preparing sign in…" />;
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated && user) {
+    return <Navigate to={target ?? landingRouteFor(user.role)} replace />;
+  }
 
-  const from = (location.state as { from?: string } | null)?.from ?? "/dashboard";
+  const from = (location.state as { from?: string } | null)?.from;
 
   const onSubmit = async (values: LoginForm) => {
     setSubmitting(true);
     setError(null);
     try {
-      await login(values.username, values.password);
+      const { user: loggedIn } = await login(values.username, values.password);
       toast.success("Welcome back to Hadran Fabrics Mall");
-      navigate(from, { replace: true });
+      // Honour a deep-link target; otherwise land on the section picker
+      // (or straight into the workspace for single-section roles).
+      // The redirect fires when the session state flips to authenticated.
+      setTarget(from && from !== "/" ? from : landingRouteFor(loggedIn.role));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed. Try again.";
       setError(message);
