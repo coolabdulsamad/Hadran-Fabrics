@@ -20,6 +20,7 @@ import {
   saveMeasurements,
 } from "../services/tailoring.service";
 import { logAudit, requestMeta } from "../services/audit.service";
+import { branchScope } from "../services/branch.service";
 import {
   FABRIC_SOURCES,
   ORDER_PAYMENT_STATUSES,
@@ -46,8 +47,10 @@ const listInput = z.object({
   pageSize: z.number().int().min(5).max(200).default(25),
 });
 
-function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">): SQL[] {
+function buildFilters(input: Omit<z.infer<typeof listInput>, "page" | "pageSize">, branch: Parameters<typeof branchScope>[1]): SQL[] {
   const filters: SQL[] = [];
+  const scope = branchScope(tailoringOrders.branchId, branch);
+  if (scope) filters.push(scope);
   if (input.status) filters.push(eq(tailoringOrders.status, input.status));
   if (input.paymentStatus) filters.push(eq(tailoringOrders.paymentStatus, input.paymentStatus));
   if (input.fabricSource) filters.push(eq(tailoringOrders.fabricSource, input.fabricSource));
@@ -77,8 +80,9 @@ function startOfToday(): Date {
 export const tailoringRouter = createRouter({
   /* ------------------------------ DASHBOARD ------------------------------ */
 
-  dashboard: permissionProcedure("tailoring.view").query(async () => {
+  dashboard: permissionProcedure("tailoring.view").query(async ({ ctx }) => {
     const db = getDb();
+    const orderScope = branchScope(tailoringOrders.branchId, ctx.activeBranch);
     const today = startOfToday();
     const monthStart = startOfToday();
     monthStart.setDate(1);
@@ -88,6 +92,7 @@ export const tailoringRouter = createRouter({
     const statusRows = await db
       .select({ status: tailoringOrders.status, count: count() })
       .from(tailoringOrders)
+      .where(orderScope)
       .groupBy(tailoringOrders.status);
     const statusBoard = Object.fromEntries(statusRows.map((r) => [r.status, r.count]));
 
@@ -96,16 +101,19 @@ export const tailoringRouter = createRouter({
     const [todayRevenue] = await db
       .select({ value: sql<string>`COALESCE(SUM(${tailoringPayments.amount}), 0)` })
       .from(tailoringPayments)
-      .where(gte(tailoringPayments.createdAt, today));
+      .innerJoin(tailoringOrders, eq(tailoringPayments.orderId, tailoringOrders.id))
+      .where(and(gte(tailoringPayments.createdAt, today), orderScope));
     const [monthRevenue] = await db
       .select({ value: sql<string>`COALESCE(SUM(${tailoringPayments.amount}), 0)` })
       .from(tailoringPayments)
-      .where(gte(tailoringPayments.createdAt, monthStart));
+      .innerJoin(tailoringOrders, eq(tailoringPayments.orderId, tailoringOrders.id))
+      .where(and(gte(tailoringPayments.createdAt, monthStart), orderScope));
 
     const [outstanding] = await db.execute(sql`
       SELECT COALESCE(SUM(price - amount_paid), 0) AS balance
       FROM ${tailoringOrders}
       WHERE ${tailoringOrders.status} != 'CANCELLED'
+      ${orderScope ? sql`AND ${orderScope}` : sql``}
     `);
     const outstandingBalance = Number((outstanding as unknown as { balance: string }[])[0]?.balance ?? 0);
 
@@ -122,6 +130,7 @@ export const tailoringRouter = createRouter({
       .leftJoin(users, eq(tailoringOrders.tailorId, users.id))
       .where(
         and(
+          orderScope,
           sql`${tailoringOrders.status} IN ('RECEIVED','CUTTING','SEWING','FINISHING','FITTING','READY')`,
           sql`${tailoringOrders.dueDate} IS NOT NULL`,
           sql`${tailoringOrders.dueDate} <= CURDATE()`,
@@ -142,6 +151,7 @@ export const tailoringRouter = createRouter({
         createdAt: tailoringOrders.createdAt,
       })
       .from(tailoringOrders)
+      .where(orderScope)
       .orderBy(desc(tailoringOrders.createdAt))
       .limit(8);
 
@@ -150,7 +160,9 @@ export const tailoringRouter = createRouter({
     const [dailyRows] = await db.execute(sql`
       SELECT DATE(${tailoringPayments.createdAt}) AS day, SUM(${tailoringPayments.amount}) AS total
       FROM ${tailoringPayments}
+      INNER JOIN ${tailoringOrders} ON ${tailoringOrders.id} = ${tailoringPayments.orderId}
       WHERE ${tailoringPayments.createdAt} >= ${thirtyDaysAgo}
+      ${orderScope ? sql`AND ${orderScope}` : sql``}
       GROUP BY day
       ORDER BY day
     `);
@@ -165,6 +177,7 @@ export const tailoringRouter = createRouter({
       FROM ${tailoringOrders}
       INNER JOIN ${users} ON ${tailoringOrders.tailorId} = ${users.id}
       WHERE ${tailoringOrders.status} IN ('RECEIVED','CUTTING','SEWING','FINISHING','FITTING')
+      ${orderScope ? sql`AND ${orderScope}` : sql``}
       GROUP BY ${users.fullName}
       ORDER BY openJobs DESC
       LIMIT 8
@@ -189,9 +202,9 @@ export const tailoringRouter = createRouter({
 
   /* ------------------------------ ORDER LIST ------------------------------ */
 
-  list: permissionProcedure("tailoring.view").input(listInput).query(async ({ input }) => {
+  list: permissionProcedure("tailoring.view").input(listInput).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
 
     const [totalRow] = await db.select({ value: count() }).from(tailoringOrders).where(where);
@@ -225,9 +238,9 @@ export const tailoringRouter = createRouter({
   }),
 
   /** All matching rows without paging — for CSV/Excel export and print. */
-  exportRows: permissionProcedure("tailoring.view").input(listInput.omit({ page: true, pageSize: true })).query(async ({ input }) => {
+  exportRows: permissionProcedure("tailoring.view").input(listInput.omit({ page: true, pageSize: true })).query(async ({ input, ctx }) => {
     const db = getDb();
-    const filters = buildFilters(input);
+    const filters = buildFilters(input, ctx.activeBranch);
     const where = filters.length ? and(...filters) : undefined;
     const rows = await db
       .select({ order: tailoringOrders, receivedByName: users.fullName })
@@ -320,7 +333,7 @@ export const tailoringRouter = createRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const result = await createTailoringOrder(input, ctx.user.id, ctx.user.branchId ?? null);
+      const result = await createTailoringOrder(input, ctx.user.id, ctx.activeBranchId);
       await logAudit({
         actorId: ctx.user.id,
         action: "tailoring.create",
@@ -447,9 +460,11 @@ export const tailoringRouter = createRouter({
         pageSize: z.number().int().min(5).max(200).default(25),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const filters: SQL[] = [];
+      const scope = branchScope(tailoringOrders.branchId, ctx.activeBranch);
+      if (scope) filters.push(scope);
       if (input.method) filters.push(eq(tailoringPayments.method, input.method));
       if (input.dateFrom) filters.push(gte(tailoringPayments.createdAt, new Date(`${input.dateFrom}T00:00:00`)));
       if (input.dateTo) filters.push(lte(tailoringPayments.createdAt, new Date(`${input.dateTo}T23:59:59`)));
@@ -499,9 +514,11 @@ export const tailoringRouter = createRouter({
         search: z.string().max(120).optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const filters: SQL[] = [];
+      const scope = branchScope(tailoringOrders.branchId, ctx.activeBranch);
+      if (scope) filters.push(scope);
       if (input.method) filters.push(eq(tailoringPayments.method, input.method));
       if (input.dateFrom) filters.push(gte(tailoringPayments.createdAt, new Date(`${input.dateFrom}T00:00:00`)));
       if (input.dateTo) filters.push(lte(tailoringPayments.createdAt, new Date(`${input.dateTo}T23:59:59`)));
@@ -532,8 +549,9 @@ export const tailoringRouter = createRouter({
   /** Tailoring customers aggregated from order history (walk-ins included). */
   customers: permissionProcedure("tailoring.view")
     .input(z.object({ search: z.string().max(120).optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
+      const custScope = branchScope(tailoringOrders.branchId, ctx.activeBranch);
       const searchClause = input.search?.trim()
         ? sql`HAVING name LIKE ${`%${input.search.trim()}%`} OR phone LIKE ${`%${input.search.trim()}%`}`
         : sql``;
@@ -547,6 +565,7 @@ export const tailoringRouter = createRouter({
           MAX(${tailoringOrders.createdAt}) AS lastOrderAt
         FROM ${tailoringOrders}
         WHERE ${tailoringOrders.status} != 'CANCELLED'
+        ${custScope ? sql`AND ${custScope}` : sql``}
         GROUP BY ${tailoringOrders.customerName}, ${tailoringOrders.customerPhone}
         ${searchClause}
         ORDER BY spent DESC
@@ -566,11 +585,12 @@ export const tailoringRouter = createRouter({
         dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
+      const repScope = branchScope(tailoringOrders.branchId, ctx.activeBranch);
       const from = input.dateFrom ? new Date(`${input.dateFrom}T00:00:00`) : new Date(0);
       const to = input.dateTo ? new Date(`${input.dateTo}T23:59:59`) : new Date();
-      const inRange = and(gte(tailoringOrders.createdAt, from), lte(tailoringOrders.createdAt, to));
+      const inRange = and(repScope, gte(tailoringOrders.createdAt, from), lte(tailoringOrders.createdAt, to));
       const payInRange = and(gte(tailoringPayments.createdAt, from), lte(tailoringPayments.createdAt, to));
 
       const [totals] = await db
@@ -596,6 +616,7 @@ export const tailoringRouter = createRouter({
         FROM ${tailoringOrders}
         WHERE ${tailoringOrders.status} != 'CANCELLED'
           AND ${tailoringOrders.createdAt} >= ${from} AND ${tailoringOrders.createdAt} <= ${to}
+          ${repScope ? sql`AND ${repScope}` : sql``}
         GROUP BY style
         ORDER BY revenue DESC
         LIMIT 10
@@ -604,7 +625,9 @@ export const tailoringRouter = createRouter({
       const [dailyRows] = await db.execute(sql`
         SELECT DATE(${tailoringPayments.createdAt}) AS day, SUM(${tailoringPayments.amount}) AS total
         FROM ${tailoringPayments}
+        INNER JOIN ${tailoringOrders} ON ${tailoringOrders.id} = ${tailoringPayments.orderId}
         WHERE ${payInRange}
+        ${repScope ? sql`AND ${repScope}` : sql``}
         GROUP BY day
         ORDER BY day
       `);
@@ -617,6 +640,7 @@ export const tailoringRouter = createRouter({
         FROM ${tailoringOrders}
         WHERE ${tailoringOrders.status} != 'CANCELLED'
           AND ${tailoringOrders.createdAt} >= ${from} AND ${tailoringOrders.createdAt} <= ${to}
+          ${repScope ? sql`AND ${repScope}` : sql``}
         GROUP BY ${tailoringOrders.customerName}, ${tailoringOrders.customerPhone}
         ORDER BY spent DESC
         LIMIT 10
@@ -631,6 +655,7 @@ export const tailoringRouter = createRouter({
         INNER JOIN ${users} ON ${tailoringOrders.tailorId} = ${users.id}
         WHERE ${tailoringOrders.status} != 'CANCELLED'
           AND ${tailoringOrders.createdAt} >= ${from} AND ${tailoringOrders.createdAt} <= ${to}
+          ${repScope ? sql`AND ${repScope}` : sql``}
         GROUP BY ${users.fullName}
         ORDER BY billed DESC
       `);
@@ -641,6 +666,7 @@ export const tailoringRouter = createRouter({
         FROM ${tailoringOrders}
         WHERE ${tailoringOrders.deliveredAt} IS NOT NULL
           AND ${tailoringOrders.createdAt} >= ${from} AND ${tailoringOrders.createdAt} <= ${to}
+          ${repScope ? sql`AND ${repScope}` : sql``}
       `);
       const turnaround = (turnaroundRows as unknown as { avgHours: string | null; deliveredCount: string }[])[0];
 
