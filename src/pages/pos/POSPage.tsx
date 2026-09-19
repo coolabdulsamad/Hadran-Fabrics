@@ -5,7 +5,7 @@ import { trpc } from "@/providers/trpc";
 import { useCartStore, type PosConfigSnapshot } from "@/store/cart-store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useBarcodeScanner } from "@/hooks/use-barcode-scanner";
-import { ProductSearchPanel, type PosProduct } from "@/components/pos/ProductSearchPanel";
+import { ScanSearchPanel, type PosProduct } from "@/components/pos/ScanSearchPanel";
 import { CartPanel } from "@/components/pos/CartPanel";
 import { MeasurementInput } from "@/components/pos/MeasurementInput";
 import { DiscountDialog } from "@/components/pos/DiscountDialog";
@@ -17,13 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { CartLine, CheckoutPayment } from "@contracts/pos";
 import { computeTotals } from "@/store/cart-store";
-import { formatCurrency } from "@/lib/format";
+import { playBeep } from "@/lib/sounds";
 
 /**
- * HADRAN FABRICS MALL — POS Terminal (Phase 5).
- * Left: catalog search & pick. Right: live cart + totals + charge.
- * Barcode scanner works globally (keyboard-wedge); every completed
- * sale flows into the thermal-receipt preview with paper-check.
+ * HADRAN FABRICS MALL — POS Terminal, supermarket style (Phase 7).
+ * No product-card grid, no category filters: a slim scan/search rail on
+ * the left (scan anywhere, or type and Enter for the top match) and a
+ * dominant receipt-style cart carrying every line's full details.
+ * Completed sales flow into the thermal-receipt preview with paper-check.
  */
 
 const FALLBACK_CONFIG: PosConfigSnapshot = {
@@ -94,9 +95,11 @@ export default function POSPage() {
   const pickProduct = useCallback(
     (p: PosProduct) => {
       if (p.currentStock <= 0) {
+        playBeep("error");
         toast.error(`${p.name} is out of stock.`);
         return;
       }
+      playBeep("scan");
       if (p.allowFractional) {
         setMeasureProduct(p);
         setMeasureOpen(true);
@@ -130,8 +133,8 @@ export default function POSPage() {
           primaryImageUrl: p.primaryImageUrl,
           categoryName: "",
         });
-        toast.success(`Scanned: ${p.name}`);
       } catch (err) {
+        playBeep("error");
         toast.error("Barcode not recognised.", {
           description: err instanceof Error ? err.message : `No active product for code "${code}".`,
         });
@@ -272,8 +275,6 @@ export default function POSPage() {
   };
 
   const cartSubtotal = totals.subtotal;
-  const itemCount = useMemo(() => lines.reduce((n, l) => n + l.quantity, 0), [lines]);
-  const [mobileCartOpen, setMobileCartOpen] = useState(false);
 
   const cartPanelProps = {
     config,
@@ -287,10 +288,7 @@ export default function POSPage() {
     onCartDiscount: () => setCartDiscountOpen(true),
     onCustomerClick: () => setCustomerOpen(true),
     onHold: () => void handleHold(),
-    onCharge: () => {
-      setMobileCartOpen(false);
-      setPaymentOpen(true);
-    },
+    onCharge: () => setPaymentOpen(true),
     holding,
     charging: checkoutMutation.isPending,
   };
@@ -306,7 +304,7 @@ export default function POSPage() {
         {configQuery.data?.scannerEnabled !== false ? (
           <Badge variant="outline" className="gap-1 text-[11px] text-emerald-700">
             <Wifi className="h-3 w-3" /> Scanner listening
-            {lastScan && <span className="text-muted-foreground">• last: {lastScan}</span>}
+            {lastScan && <span className="max-w-[140px] truncate text-muted-foreground">• last: {lastScan}</span>}
           </Badge>
         ) : (
           <Badge variant="outline" className="gap-1 text-[11px] text-muted-foreground">
@@ -314,14 +312,6 @@ export default function POSPage() {
           </Badge>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {/* Mobile/tablet: cart toggle (inline cart only shows on lg+) */}
-          <Button
-            size="sm"
-            className="bg-gold-500 font-semibold text-navy-950 hover:bg-gold-600 lg:hidden"
-            onClick={() => setMobileCartOpen(true)}
-          >
-            Cart · {itemCount} · {formatCurrency(totals.grandTotal)}
-          </Button>
           <Button variant="outline" size="sm" onClick={() => setHeldOpen(true)}>
             <PauseCircle className="mr-1.5 h-4 w-4" />
             Held Sales
@@ -329,37 +319,15 @@ export default function POSPage() {
         </div>
       </div>
 
-      {/* Main split — minmax(0,1fr) + min-w-0 stops content forcing the page wider than the screen */}
-      <div className="grid w-full min-w-0 flex-1 gap-3 lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_400px]">
-        <div className="min-w-0">
-          <ProductSearchPanel onPick={pickProduct} inCartIds={inCartIds} />
-        </div>
-        <div className="hidden min-h-0 min-w-0 lg:block">
+      {/* Supermarket split — slim scan rail left, dominant cart right.
+          On mobile the cart IS the screen: search sits on top and its
+          results float as an overlay, no drawer needed. */}
+      <div className="grid w-full min-w-0 flex-1 gap-3 lg:min-h-0 lg:grid-cols-[minmax(340px,390px)_minmax(0,1fr)]">
+        <ScanSearchPanel onPick={pickProduct} inCartIds={inCartIds} onCodeScan={setLastScan} />
+        <div className="min-h-[62vh] min-w-0 lg:min-h-0">
           <CartPanel {...cartPanelProps} />
         </div>
       </div>
-
-      {/* Mobile cart drawer (< lg) */}
-      {mobileCartOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-navy-950/60"
-            onClick={() => setMobileCartOpen(false)}
-            aria-hidden
-          />
-          <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col bg-cream-100 p-3 shadow-2xl">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <h2 className="font-display text-lg font-semibold text-navy-900">Current Sale</h2>
-              <Button variant="outline" size="sm" onClick={() => setMobileCartOpen(false)}>
-                Close
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1">
-              <CartPanel {...cartPanelProps} />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Dialogs */}
       <MeasurementInput
