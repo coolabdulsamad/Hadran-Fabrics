@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq } from "drizzle-orm";
 import { createRouter } from "../middleware";
 import { permissionProcedure } from "../trpc";
 import { getDb } from "../queries/connection";
 import { products, purchaseItems, purchases, suppliers, users } from "@db/schema";
 import { recordMovement } from "../services/inventory.service";
+import { branchScope } from "../services/branch.service";
 import { recordMoneyMovement } from "../services/money.service";
 import { logAudit, requestMeta } from "../services/audit.service";
 import { UNITS } from "@contracts/constants";
@@ -14,9 +15,10 @@ import { UNITS } from "@contracts/constants";
  * HADRAN FABRICS MALL — purchase orders router
  * Create POs from suppliers, receive goods into stock (full or partial),
  * cancel pending orders. All receiving flows through the stock ledger.
+ * POs belong to the branch that raised them — lists are branch-scoped.
  */
 export const purchasesRouter = createRouter({
-  list: permissionProcedure("inventory.manage_purchases").query(async () => {
+  list: permissionProcedure("inventory.manage_purchases").query(async ({ ctx }) => {
     const db = getDb();
     return db
       .select({
@@ -35,6 +37,7 @@ export const purchasesRouter = createRouter({
       .leftJoin(suppliers, eq(purchases.supplierId, suppliers.id))
       .leftJoin(users, eq(purchases.createdBy, users.id))
       .leftJoin(purchaseItems, eq(purchaseItems.purchaseId, purchases.id))
+      .where(branchScope(purchases.branchId, ctx.activeBranch))
       .groupBy(purchases.id)
       .orderBy(desc(purchases.createdAt))
       .limit(100);
@@ -42,14 +45,14 @@ export const purchasesRouter = createRouter({
 
   byId: permissionProcedure("inventory.manage_purchases")
     .input(z.object({ id: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const rows = await db
         .select({ purchase: purchases, supplierName: suppliers.name, creatorName: users.fullName })
         .from(purchases)
         .leftJoin(suppliers, eq(purchases.supplierId, suppliers.id))
         .leftJoin(users, eq(purchases.createdBy, users.id))
-        .where(eq(purchases.id, input.id))
+        .where(and(eq(purchases.id, input.id), branchScope(purchases.branchId, ctx.activeBranch)))
         .limit(1);
       if (!rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Purchase order not found." });
 
@@ -115,6 +118,7 @@ export const purchasesRouter = createRouter({
           totalCost,
           notes: input.notes ?? null,
           expectedAt: input.expectedAt ? new Date(input.expectedAt) : null,
+          branchId: ctx.activeBranchId,
           createdBy: ctx.user.id,
         })
         .$returningId();

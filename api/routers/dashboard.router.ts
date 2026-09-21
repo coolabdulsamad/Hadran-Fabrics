@@ -2,17 +2,22 @@ import { and, count, desc, eq, lte, sql } from "drizzle-orm";
 import { createRouter } from "../middleware";
 import { authedProcedure } from "../trpc";
 import { getDb } from "../queries/connection";
-import { categories, products, settings, stockMovements, users } from "@db/schema";
+import { categories, products, settings, stockLevels, stockMovements, users } from "@db/schema";
+import { branchScope, getMainBranchId } from "../services/branch.service";
 
 /**
  * HADRAN FABRICS MALL — dashboard router
- * Real store summary for the shell dashboard (grows in later phases).
+ * Store summary for the shell dashboard. Everything stock-, staff- or
+ * movement-related is scoped to the request's active branch — switching
+ * branches switches the dashboard with them. (Catalog counts are shared
+ * master data and stay company-wide.)
  */
 export const dashboardRouter = createRouter({
   summary: authedProcedure.query(async ({ ctx }) => {
     const db = getDb();
     // Inventory valuations are sensitive — sales staff never see them.
     const canSeeValuation = ctx.user.role !== "SALES";
+    const branchId = ctx.activeBranchId ?? (await getMainBranchId());
 
     const [productCount] = await db
       .select({ value: count() })
@@ -21,27 +26,49 @@ export const dashboardRouter = createRouter({
 
     const [categoryCount] = await db.select({ value: count() }).from(categories);
 
-    const [staffCount] = await db.select({ value: count() }).from(users).where(eq(users.status, "ACTIVE"));
+    // Staff working at this branch (MAIN also counts unassigned staff).
+    const staffScope = branchScope(users.branchId, ctx.activeBranch);
+    const [staffCount] = await db
+      .select({ value: count() })
+      .from(users)
+      .where(and(eq(users.status, "ACTIVE"), staffScope));
 
-    // Products at or below reorder level
-    const lowStock = await db
-      .select({
-        id: products.id,
-        name: products.name,
-        sku: products.sku,
-        currentStock: products.currentStock,
-        reorderLevel: products.reorderLevel,
-        unitOfMeasure: products.unitOfMeasure,
-      })
-      .from(products)
-      .where(and(eq(products.status, "ACTIVE"), lte(products.currentStock, products.reorderLevel)))
-      .limit(10);
+    // Products THIS branch holds at or below reorder level.
+    const lowStock = branchId != null
+      ? (
+          await db
+            .select({
+              id: products.id,
+              name: products.name,
+              sku: products.sku,
+              currentStock: stockLevels.quantity,
+              reorderLevel: products.reorderLevel,
+              unitOfMeasure: products.unitOfMeasure,
+            })
+            .from(stockLevels)
+            .innerJoin(products, eq(stockLevels.productId, products.id))
+            .where(
+              and(
+                eq(stockLevels.branchId, branchId),
+                eq(products.status, "ACTIVE"),
+                lte(stockLevels.quantity, products.reorderLevel),
+              ),
+            )
+            .orderBy(stockLevels.quantity)
+            .limit(10)
+        ).map((r) => ({ ...r, currentStock: Number(r.currentStock) }))
+      : [];
 
+    // Value of the stock physically held at this branch.
+    const branchQty =
+      branchId != null
+        ? sql<string>`COALESCE((SELECT sl.quantity FROM stock_levels sl WHERE sl.product_id = ${products.id} AND sl.branch_id = ${branchId}), 0)`
+        : sql<string>`${products.currentStock}`;
     const [stockValueRow] = canSeeValuation
       ? await db
           .select({
-            cost: sql<number>`COALESCE(SUM(${products.currentStock} * ${products.costPrice}), 0)`,
-            retail: sql<number>`COALESCE(SUM(${products.currentStock} * ${products.sellingPrice}), 0)`,
+            cost: sql<number>`COALESCE(SUM(${branchQty} * ${products.costPrice}), 0)`,
+            retail: sql<number>`COALESCE(SUM(${branchQty} * ${products.sellingPrice}), 0)`,
           })
           .from(products)
           .where(eq(products.status, "ACTIVE"))
@@ -61,7 +88,7 @@ export const dashboardRouter = createRouter({
     };
   }),
 
-  recentMovements: authedProcedure.query(async () => {
+  recentMovements: authedProcedure.query(async ({ ctx }) => {
     const db = getDb();
     return db
       .select({
@@ -79,6 +106,7 @@ export const dashboardRouter = createRouter({
       .from(stockMovements)
       .innerJoin(products, eq(stockMovements.productId, products.id))
       .leftJoin(users, eq(stockMovements.performedBy, users.id))
+      .where(branchScope(stockMovements.branchId, ctx.activeBranch))
       .orderBy(desc(stockMovements.createdAt))
       .limit(8);
   }),

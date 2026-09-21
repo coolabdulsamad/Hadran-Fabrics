@@ -143,6 +143,9 @@ export async function processReturn(input: ProcessReturnInput): Promise<ProcessR
       .values({
         reference,
         saleId: sale.id,
+        // The return belongs to the branch the sale happened at — restocked
+        // goods go back onto that branch's shelves (see movements below).
+        branchId: sale.branchId ?? null,
         type: input.type,
         reason: input.reason,
         notes: input.notes ?? null,

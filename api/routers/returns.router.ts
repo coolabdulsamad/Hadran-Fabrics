@@ -6,6 +6,7 @@ import { permissionProcedure } from "../trpc";
 import { getDb } from "../queries/connection";
 import { customers, products, returnItems, returns, saleItems, sales, users } from "@db/schema";
 import { isApprovalGated, submitApproval } from "../services/approvals.service";
+import { branchScope } from "../services/branch.service";
 import { processReturn } from "../services/returns.service";
 import { logAudit, requestMeta } from "../services/audit.service";
 import { PAYMENT_METHODS, RETURN_CONDITIONS, RETURN_STATUSES, RETURN_TYPES } from "@contracts/constants";
@@ -162,9 +163,12 @@ export const returnsRouter = createRouter({
         pageSize: z.number().int().min(5).max(50).default(15),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const conds: SQL[] = [];
+      // Each branch sees only its own returns.
+      const scope = branchScope(returns.branchId, ctx.activeBranch);
+      if (scope) conds.push(scope);
       if (input.status) conds.push(eq(returns.status, input.status));
       if (input.type) conds.push(eq(returns.type, input.type));
       if (input.search) conds.push(like(returns.reference, `%${input.search}%`));
@@ -192,7 +196,7 @@ export const returnsRouter = createRouter({
 
   byId: permissionProcedure("returns.view")
     .input(z.object({ id: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const rows = await db
         .select({
@@ -205,7 +209,7 @@ export const returnsRouter = createRouter({
         .innerJoin(sales, eq(returns.saleId, sales.id))
         .leftJoin(customers, eq(sales.customerId, customers.id))
         .leftJoin(users, eq(returns.processedBy, users.id))
-        .where(eq(returns.id, input.id))
+        .where(and(eq(returns.id, input.id), branchScope(returns.branchId, ctx.activeBranch)))
         .limit(1);
       if (!rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Return not found." });
 
