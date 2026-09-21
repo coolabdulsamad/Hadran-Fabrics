@@ -28,7 +28,10 @@ type Row = {
   productType: string;
   unitOfMeasure: string;
   sellingPrice: number;
+  /** Company-wide total across all branches. */
   currentStock: number;
+  /** Stock physically held at the active branch. */
+  branchStock: number;
   reorderLevel: number;
   primaryImageUrl: string | null;
   status: string;
@@ -108,18 +111,21 @@ export default function ProductsPage() {
       ),
     },
     {
-      header: "Stock",
+      header: "Stock (this branch)",
       className: "text-right",
       render: (p) => (
-        <span
-          className={cn(
-            "font-bold",
-            p.currentStock <= 0 ? "text-red-600" : p.currentStock <= p.reorderLevel ? "text-amber-600" : "text-emerald-600",
-          )}
-        >
-          {formatQty(p.currentStock)}{" "}
-          <span className="text-[11px] font-normal text-muted-foreground">{p.unitOfMeasure.toLowerCase()}(s)</span>
-        </span>
+        <div className="text-right">
+          <span
+            className={cn(
+              "font-bold",
+              p.branchStock <= 0 ? "text-red-600" : p.branchStock <= p.reorderLevel ? "text-amber-600" : "text-emerald-600",
+            )}
+          >
+            {formatQty(p.branchStock)}{" "}
+            <span className="text-[11px] font-normal text-muted-foreground">{p.unitOfMeasure.toLowerCase()}(s)</span>
+          </span>
+          <p className="text-[10px] text-muted-foreground">all branches: {formatQty(p.currentStock)}</p>
+        </div>
       ),
     },
     {

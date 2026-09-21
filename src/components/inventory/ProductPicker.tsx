@@ -11,6 +11,7 @@ export interface PickedProduct {
   sku: string;
   name: string;
   unitOfMeasure: string;
+  /** Balance at the ACTIVE BRANCH (the shelf the form acts on). */
   currentStock: number;
   sellingPrice: number;
 }
@@ -84,7 +85,8 @@ export function ProductPicker({ value, onChange, placeholder = "Search product b
                     sku: p.sku,
                     name: p.name,
                     unitOfMeasure: p.unitOfMeasure,
-                    currentStock: p.currentStock,
+                    // Stock forms act on the active branch's shelf — show its balance.
+                    currentStock: p.branchStock ?? p.currentStock,
                     sellingPrice: p.sellingPrice,
                   });
                   setOpen(false);
@@ -97,7 +99,7 @@ export function ProductPicker({ value, onChange, placeholder = "Search product b
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium text-navy-900">{p.name}</span>
                   <span className="text-xs text-muted-foreground">
-                    {p.sku} · stock {formatQty(p.currentStock)} {p.unitOfMeasure.toLowerCase()}(s)
+                    {p.sku} · branch stock {formatQty(p.branchStock ?? p.currentStock)} {p.unitOfMeasure.toLowerCase()}(s)
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">

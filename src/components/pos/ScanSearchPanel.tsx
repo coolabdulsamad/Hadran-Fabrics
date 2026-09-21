@@ -29,10 +29,18 @@ export interface PosProduct {
   taxRate: number;
   taxExempt: boolean;
   discountEligible: boolean;
+  /** Company-wide total (reference only). */
   currentStock: number;
+  /** Stock at the active branch — what this terminal can actually sell. */
+  branchStock?: number;
   reorderLevel: number;
   primaryImageUrl: string | null;
   categoryName: string;
+}
+
+/** What this terminal can sell right now (active-branch shelf stock). */
+function sellable(p: PosProduct): number {
+  return p.branchStock ?? p.currentStock;
 }
 
 interface ScanSearchPanelProps {
@@ -58,7 +66,7 @@ export function ScanSearchPanel({ onPick, inCartIds, onCodeScan }: ScanSearchPan
   const searchActive = search.trim().length > 0;
 
   const pick = (p: PosProduct) => {
-    if (p.currentStock <= 0) return; // parent toasts on scan; rows are disabled anyway
+    if (sellable(p) <= 0) return; // parent toasts on scan; rows are disabled anyway
     onPick(p);
     setSearch("");
     inputRef.current?.focus();
@@ -75,7 +83,7 @@ export function ScanSearchPanel({ onPick, inCartIds, onCodeScan }: ScanSearchPan
     const q = search.trim();
     if (!q) return;
     const exact = items.find(
-      (i) => i.currentStock > 0 && (i.barcode === q || i.sku.toUpperCase() === q.toUpperCase()),
+      (i) => sellable(i) > 0 && (i.barcode === q || i.sku.toUpperCase() === q.toUpperCase()),
     );
     if (exact) {
       pick(exact);
@@ -91,7 +99,7 @@ export function ScanSearchPanel({ onPick, inCartIds, onCodeScan }: ScanSearchPan
         /* unknown code — fall through to the top hit */
       }
     }
-    const first = items.find((i) => i.currentStock > 0);
+    const first = items.find((i) => sellable(i) > 0);
     if (first) pick(first);
   };
 
@@ -171,10 +179,10 @@ export function ScanSearchPanel({ onPick, inCartIds, onCodeScan }: ScanSearchPan
           ) : (
             <ul className="scrollbar-lux min-h-0 divide-y divide-border overflow-y-auto">
               {items.map((p, idx) => {
-                const out = p.currentStock <= 0;
-                const low = !out && p.currentStock <= p.reorderLevel;
+                const out = sellable(p) <= 0;
+                const low = !out && sellable(p) <= p.reorderLevel;
                 const picked = inCartIds.has(p.id);
-                const first = idx === items.findIndex((i) => i.currentStock > 0);
+                const first = idx === items.findIndex((i) => sellable(i) > 0);
                 return (
                   <li key={p.id}>
                     <button
@@ -209,11 +217,11 @@ export function ScanSearchPanel({ onPick, inCartIds, onCodeScan }: ScanSearchPan
                           {p.sku}
                           {p.color ? ` • ${p.color}` : ""} ·{" "}
                           {out ? (
-                            <span className="font-medium text-red-600">out of stock</span>
+                            <span className="font-medium text-red-600">out of stock at this branch</span>
                           ) : low ? (
-                            <span className="font-medium text-amber-700">low — {formatQty(p.currentStock)} left</span>
+                            <span className="font-medium text-amber-700">low — {formatQty(sellable(p))} left</span>
                           ) : (
-                            <>{formatQty(p.currentStock)} in stock</>
+                            <>{formatQty(sellable(p))} in stock</>
                           )}
                           {picked && !out && <span className="font-medium text-gold-700"> · in cart</span>}
                         </span>

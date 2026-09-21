@@ -43,8 +43,8 @@ export default function ProductDetailsPage() {
   if (query.isLoading) return <LoadingScreen label="Loading product details…" />;
   if (!query.data) return <EmptyState title="Product not found" description="It may have been removed from the catalog." />;
 
-  const { product: p, categoryName, supplierName, creatorName, images, movements } = query.data;
-  const lowStock = p.currentStock <= p.reorderLevel;
+  const { product: p, categoryName, supplierName, creatorName, branchStock, images, movements } = query.data;
+  const lowStock = branchStock <= p.reorderLevel;
 
   return (
     <div>
@@ -176,16 +176,20 @@ export default function ProductDetailsPage() {
               </h3>
               <div className="mt-2 divide-y divide-border/70">
                 <InfoRow
-                  label="Current stock"
+                  label="Stock at this branch"
                   value={
                     <span className={cn("font-display text-lg font-bold", lowStock ? "text-red-600" : "text-emerald-600")}>
-                      {formatQty(p.currentStock)} {p.unitOfMeasure.toLowerCase()}(s)
+                      {formatQty(branchStock)} {p.unitOfMeasure.toLowerCase()}(s)
                     </span>
                   }
                 />
+                <InfoRow
+                  label="Company-wide (all branches)"
+                  value={`${formatQty(p.currentStock)} ${p.unitOfMeasure.toLowerCase()}(s)`}
+                />
                 <InfoRow label="Reorder level" value={`${formatQty(p.reorderLevel)} ${p.unitOfMeasure.toLowerCase()}(s)`} />
-                <InfoRow label="Stock value (cost)" value={formatCurrency(p.currentStock * p.costPrice)} />
-                <InfoRow label="Stock value (retail)" value={formatCurrency(p.currentStock * p.sellingPrice)} />
+                <InfoRow label="Branch stock value (cost)" value={formatCurrency(branchStock * p.costPrice)} />
+                <InfoRow label="Branch stock value (retail)" value={formatCurrency(branchStock * p.sellingPrice)} />
               </div>
             </div>
           </div>

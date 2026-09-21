@@ -68,7 +68,8 @@ function ProductPicker({
                   sku: p.sku,
                   name: p.name,
                   unitOfMeasure: p.unitOfMeasure,
-                  currentStock: Number(p.currentStock),
+                  // Materials are consumed from the active branch's shelf.
+                  currentStock: Number(p.branchStock ?? p.currentStock),
                 })
               }
               className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-gold-50"
@@ -77,8 +78,8 @@ function ProductPicker({
                 <span className="block truncate text-xs font-semibold text-navy-900">{p.name}</span>
                 <span className="font-mono text-[10px] text-muted-foreground">{p.sku}</span>
               </span>
-              <span className={cn("shrink-0 text-[11px] font-semibold", Number(p.currentStock) > 0 ? "text-emerald-700" : "text-red-600")}>
-                {Number(p.currentStock)} {p.unitOfMeasure}
+              <span className={cn("shrink-0 text-[11px] font-semibold", Number(p.branchStock ?? p.currentStock) > 0 ? "text-emerald-700" : "text-red-600")}>
+                {Number(p.branchStock ?? p.currentStock)} {p.unitOfMeasure}
               </span>
             </button>
           </li>

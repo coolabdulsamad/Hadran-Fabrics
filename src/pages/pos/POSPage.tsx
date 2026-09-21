@@ -48,7 +48,8 @@ function toCartLineBase(p: PosProduct): Omit<CartLine, "quantity" | "discountAmo
     discountEligible: p.discountEligible,
     taxRate: p.taxRate,
     taxExempt: p.taxExempt,
-    maxStock: p.currentStock,
+    // Sellable ceiling = what the ACTIVE BRANCH holds, not the company total.
+    maxStock: p.branchStock ?? p.currentStock,
   };
 }
 
@@ -94,9 +95,9 @@ export default function POSPage() {
   /* ------------------------- pick / scan ------------------------- */
   const pickProduct = useCallback(
     (p: PosProduct) => {
-      if (p.currentStock <= 0) {
+      if ((p.branchStock ?? p.currentStock) <= 0) {
         playBeep("error");
-        toast.error(`${p.name} is out of stock.`);
+        toast.error(`${p.name} is out of stock at this branch.`);
         return;
       }
       playBeep("scan");
@@ -129,6 +130,7 @@ export default function POSPage() {
           taxExempt: p.taxExempt,
           discountEligible: p.discountEligible,
           currentStock: p.currentStock,
+          branchStock: p.branchStock,
           reorderLevel: p.reorderLevel,
           primaryImageUrl: p.primaryImageUrl,
           categoryName: "",
@@ -193,6 +195,8 @@ export default function POSPage() {
       for (const i of items) {
         const p = await utils.products.byId.fetch({ id: i.productId });
         const prod = p.product;
+        // byId puts branchStock at the top level (active-branch balance).
+        const sellable = p.branchStock ?? prod.currentStock;
         restored.push({
           productId: prod.id,
           sku: prod.sku,
@@ -201,7 +205,7 @@ export default function POSPage() {
           imageUrl: prod.primaryImageUrl,
           unitPrice: i.unitPrice,
           catalogPrice: prod.sellingPrice,
-          quantity: Math.min(i.quantity, Math.max(prod.currentStock, i.quantity)),
+          quantity: Math.min(i.quantity, Math.max(sellable, i.quantity)),
           allowFractional: prod.allowFractional,
           packSize: prod.packSize,
           discountEligible: prod.discountEligible,
@@ -209,7 +213,7 @@ export default function POSPage() {
           taxExempt: prod.taxExempt,
           discountAmount: i.discountAmount,
           isMeasuredCut: i.isMeasuredCut,
-          maxStock: prod.currentStock > 0 ? prod.currentStock : i.quantity,
+          maxStock: sellable > 0 ? sellable : i.quantity,
         });
       }
       let cust: { id: number; fullName: string; discountPercent: number } | null = null;

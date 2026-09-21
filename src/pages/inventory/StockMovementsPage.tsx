@@ -104,7 +104,7 @@ export default function StockMovementsPage() {
     <div>
       <PageHeader
         title="Stock Movements"
-        description="The immutable inventory ledger — every unit in or out, who moved it, and the balance after."
+        description="The immutable inventory ledger for the branch you're working in — every unit in or out, who moved it, and the balance after."
         actions={
           <>
             {can("inventory.stock_in") && (

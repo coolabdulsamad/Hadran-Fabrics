@@ -132,7 +132,7 @@ export default function StockAdjustmentsPage() {
 
             {picked && (
               <div className="rounded-lg bg-cream-200/70 px-4 py-3 text-sm">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">Current balance</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Current balance (this branch)</p>
                 <p className="font-display text-lg font-bold text-navy-900">
                   {formatQty(picked.currentStock)} {picked.unitOfMeasure.toLowerCase()}(s)
                 </p>

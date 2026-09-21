@@ -91,7 +91,7 @@ export default function LowStockPage() {
     <div>
       <PageHeader
         title="Low Stock Watch"
-        description="Everything at or below its reorder level — restock before the next market rush."
+        description="Everything this branch holds at or below its reorder level — restock before the next market rush."
         actions={
           <span className="flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-4 py-1.5 text-sm font-semibold text-amber-800">
             <AlertTriangle className="h-4 w-4" />
