@@ -11,6 +11,7 @@ import {
   salePayments,
   sales,
   settings,
+  stockLevels,
   users,
 } from "@db/schema";
 import { recordMovement } from "../services/inventory.service";
@@ -18,7 +19,7 @@ import { netPayments, recordMoneyMovement } from "../services/money.service";
 import { voidSale } from "../services/sales-void.service";
 import { isApprovalGated, submitApproval } from "../services/approvals.service";
 import { logAudit, requestMeta } from "../services/audit.service";
-import { branchScope } from "../services/branch.service";
+import { branchScope, getMainBranchId } from "../services/branch.service";
 import { checkoutSchema } from "@contracts/pos";
 import type { ReceiptConfig, ReceiptData } from "@contracts/receipts";
 import { STORE, SALE_STATUSES } from "@contracts/constants";
@@ -135,6 +136,16 @@ export const salesRouter = createRouter({
       const catalog = await db.select().from(products).where(inArray(products.id, ids));
       const byId = new Map(catalog.map((p) => [p.id, p]));
 
+      // ----- this branch's stock levels (branches sell their own shelves) -----
+      const saleBranchId = ctx.activeBranchId ?? (await getMainBranchId());
+      const levelRows = saleBranchId != null
+        ? await db
+            .select({ productId: stockLevels.productId, quantity: stockLevels.quantity })
+            .from(stockLevels)
+            .where(and(eq(stockLevels.branchId, saleBranchId), inArray(stockLevels.productId, ids)))
+        : [];
+      const branchLevelByProduct = new Map(levelRows.map((r) => [r.productId, Number(r.quantity)]));
+
       // ----- settings / limits -----
       const [maxItemPct, maxCartPct, svcRate, pointPer, loyaltyEnabled, allowOverrideSetting, vatRate] =
         await Promise.all([
@@ -184,10 +195,13 @@ export const salesRouter = createRouter({
         if (!product.allowFractional && Math.abs(item.quantity % 1) > 0.0001) {
           throw new TRPCError({ code: "BAD_REQUEST", message: `"${product.name}" is sold in whole ${product.unitOfMeasure.toLowerCase()}s only.` });
         }
-        if (item.quantity > product.currentStock + 0.0001) {
+        // Branches are independent: a sale can only draw on stock physically
+        // held at THIS branch (move goods first with a branch transfer).
+        const branchAvailable = branchLevelByProduct.get(item.productId) ?? 0;
+        if (item.quantity > branchAvailable + 0.0001) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `Insufficient stock for "${product.name}" — only ${product.currentStock} ${product.unitOfMeasure.toLowerCase()}(s) available.`,
+            message: `Insufficient stock for "${product.name}" at this branch — only ${branchAvailable} ${product.unitOfMeasure.toLowerCase()}(s) available here.`,
           });
         }
 
@@ -486,7 +500,13 @@ export const salesRouter = createRouter({
       .from(sales)
       .leftJoin(users, eq(sales.cashierId, users.id))
       .leftJoin(customers, eq(sales.customerId, customers.id))
-      .where(and(eq(sales.status, "HELD"), canSeeAll ? undefined : eq(sales.cashierId, ctx.user.id)))
+      .where(
+        and(
+          eq(sales.status, "HELD"),
+          branchScope(sales.branchId, ctx.activeBranch),
+          canSeeAll ? undefined : eq(sales.cashierId, ctx.user.id),
+        ),
+      )
       .orderBy(desc(sales.heldAt))
       .limit(30);
   }),
@@ -576,7 +596,7 @@ export const salesRouter = createRouter({
         total: sql<number>`COALESCE(SUM(${sales.grandTotal}), 0)`,
       })
       .from(sales)
-      .where(and(eq(sales.cashierId, ctx.user.id), eq(sales.status, "COMPLETED"), gte(sales.createdAt, dayStart), lt(sales.createdAt, new Date(dayStart.getTime() + 86400000))));
+      .where(and(eq(sales.cashierId, ctx.user.id), eq(sales.status, "COMPLETED"), branchScope(sales.branchId, ctx.activeBranch), gte(sales.createdAt, dayStart), lt(sales.createdAt, new Date(dayStart.getTime() + 86400000))));
     return { todayCount: row?.count ?? 0, todayTotal: Number(row?.total ?? 0) };
   }),
 
@@ -596,7 +616,7 @@ export const salesRouter = createRouter({
         .from(sales)
         .leftJoin(users, eq(sales.cashierId, users.id))
         .leftJoin(customers, eq(sales.customerId, customers.id))
-        .where(eq(sales.id, input.id))
+        .where(and(eq(sales.id, input.id), branchScope(sales.branchId, ctx.activeBranch)))
         .limit(1);
 
       const row = rows[0];
@@ -628,7 +648,7 @@ export const salesRouter = createRouter({
         .from(sales)
         .leftJoin(users, eq(sales.cashierId, users.id))
         .leftJoin(customers, eq(sales.customerId, customers.id))
-        .where(eq(sales.id, input.id))
+        .where(and(eq(sales.id, input.id), branchScope(sales.branchId, ctx.activeBranch)))
         .limit(1);
       const row = rows[0];
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Sale not found." });
@@ -792,10 +812,11 @@ export const salesRouter = createRouter({
     }),
 
   /** Today's headline figures across all staff. */
-  todayStats: permissionProcedure("sales.view_all_history").query(async () => {
+  todayStats: permissionProcedure("sales.view_all_history").query(async ({ ctx }) => {
     const db = getDb();
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const scope = branchScope(sales.branchId, ctx.activeBranch);
     const [row] = await db
       .select({
         count: sql<number>`SUM(CASE WHEN ${sales.status} = 'COMPLETED' THEN 1 ELSE 0 END)`,
@@ -804,11 +825,11 @@ export const salesRouter = createRouter({
         tax: sql<string>`COALESCE(SUM(CASE WHEN ${sales.status} = 'COMPLETED' THEN ${sales.taxTotal} ELSE 0 END), 0)`,
       })
       .from(sales)
-      .where(gte(sales.createdAt, dayStart));
+      .where(and(gte(sales.createdAt, dayStart), scope));
     const [voided] = await db
       .select({ count: count() })
       .from(sales)
-      .where(and(gte(sales.createdAt, dayStart), eq(sales.status, "VOIDED")));
+      .where(and(gte(sales.createdAt, dayStart), eq(sales.status, "VOIDED"), scope));
     const revenue = Number(row?.revenue ?? 0);
     const completed = Number(row?.count ?? 0);
     return {

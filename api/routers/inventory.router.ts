@@ -4,8 +4,9 @@ import { and, asc, count, desc, eq, lte, sql, type SQL } from "drizzle-orm";
 import { createRouter } from "../middleware";
 import { permissionProcedure } from "../trpc";
 import { getDb } from "../queries/connection";
-import { categories, products, stockCountItems, stockCounts, stockMovements, users } from "@db/schema";
-import { recordMovement } from "../services/inventory.service";
+import { categories, products, stockCountItems, stockCounts, stockLevels, stockMovements, users } from "@db/schema";
+import { getBranchBalance, recordMovement } from "../services/inventory.service";
+import { branchScope, getMainBranchId } from "../services/branch.service";
 import { isApprovalGated, submitApproval } from "../services/approvals.service";
 import { logAudit, requestMeta } from "../services/audit.service";
 import { STOCK_MOVEMENT_TYPES } from "@contracts/constants";
@@ -14,7 +15,16 @@ import { STOCK_MOVEMENT_TYPES } from "@contracts/constants";
  * HADRAN FABRICS MALL — inventory router
  * Stock ledger, stock-in/out, adjustments (approval-gated for managers),
  * physical stock counts, low-stock watch and valuation overview.
+ *
+ * Every read in this router is scoped to the request's active branch:
+ * branches run independent inventories (stock_levels is the per-branch
+ * source of truth; products.current_stock stays the company-wide total).
  */
+
+/** Branch the request works in (active branch, MAIN as fallback). */
+async function workingBranchId(activeBranchId: number | null): Promise<number | null> {
+  return activeBranchId ?? (await getMainBranchId());
+}
 
 async function nextReference(prefix: string, table: "stock_counts"): Promise<string> {
   const db = getDb();
@@ -36,9 +46,12 @@ export const inventoryRouter = createRouter({
         pageSize: z.number().int().min(5).max(100).default(20),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const conds: SQL[] = [];
+      // Branches are independent — the ledger shows only this branch's moves.
+      const scope = branchScope(stockMovements.branchId, ctx.activeBranch);
+      if (scope) conds.push(scope);
       if (input.productId) conds.push(eq(stockMovements.productId, input.productId));
       if (input.movementType) conds.push(eq(stockMovements.movementType, input.movementType));
       const where = conds.length ? and(...conds) : undefined;
@@ -157,7 +170,11 @@ export const inventoryRouter = createRouter({
       const product = found[0];
       if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Product not found." });
 
-      const delta = Number((input.newBalance - product.currentStock).toFixed(3));
+      // Adjustments target the ACTIVE BRANCH's balance, not the company-wide
+      // total — each branch counts and corrects its own shelves.
+      const branchId = await workingBranchId(ctx.activeBranchId);
+      const branchBalance = branchId != null ? await getBranchBalance(input.productId, branchId) : product.currentStock;
+      const delta = Number((input.newBalance - branchBalance).toFixed(3));
       if (delta === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "New balance equals current stock — nothing to adjust." });
 
       // ---- Manager gate ----
@@ -170,14 +187,14 @@ export const inventoryRouter = createRouter({
             productId: input.productId,
             productName: product.name,
             sku: product.sku,
-            currentStock: product.currentStock,
+            currentStock: branchBalance,
             newBalance: input.newBalance,
             delta,
             reason: input.reason,
             notes: input.notes ?? null,
             branchId: ctx.activeBranchId,
           },
-          summary: `Adjust "${product.name}" stock ${product.currentStock} → ${input.newBalance} (${delta > 0 ? "+" : ""}${delta})`,
+          summary: `Adjust "${product.name}" stock ${branchBalance} → ${input.newBalance} (${delta > 0 ? "+" : ""}${delta})`,
           requesterId: ctx.user.id,
         });
         await logAudit({
@@ -206,8 +223,8 @@ export const inventoryRouter = createRouter({
         action: "inventory.adjust",
         entityType: "PRODUCT",
         entityId: input.productId,
-        description: `Adjusted "${product.name}" stock ${product.currentStock} → ${input.newBalance} (${input.reason}).`,
-        beforeData: { stock: product.currentStock },
+        description: `Adjusted "${product.name}" branch stock ${branchBalance} → ${input.newBalance} (${input.reason}).`,
+        beforeData: { stock: branchBalance },
         afterData: { stock: result.newBalance },
         ...requestMeta(ctx.req),
       });
@@ -215,35 +232,55 @@ export const inventoryRouter = createRouter({
     }),
 
   /* ------------------------------ LOW STOCK ------------------------------ */
-  lowStock: permissionProcedure("inventory.view").query(async () => {
+  lowStock: permissionProcedure("inventory.view").query(async ({ ctx }) => {
     const db = getDb();
-    return db
+    // Per-branch watch: products THIS branch holds at/below reorder level.
+    // (Products the branch has never stocked are not "running low" here.)
+    const branchId = await workingBranchId(ctx.activeBranchId);
+    if (branchId == null) return [];
+    const rows = await db
       .select({
         id: products.id,
         sku: products.sku,
         name: products.name,
         unitOfMeasure: products.unitOfMeasure,
-        currentStock: products.currentStock,
+        currentStock: stockLevels.quantity,
         reorderLevel: products.reorderLevel,
         sellingPrice: products.sellingPrice,
         categoryName: categories.name,
       })
-      .from(products)
+      .from(stockLevels)
+      .innerJoin(products, eq(stockLevels.productId, products.id))
       .innerJoin(categories, eq(products.categoryId, categories.id))
-      .where(and(eq(products.status, "ACTIVE"), lte(products.currentStock, products.reorderLevel)))
-      .orderBy(asc(products.currentStock));
+      .where(
+        and(
+          eq(stockLevels.branchId, branchId),
+          eq(products.status, "ACTIVE"),
+          lte(stockLevels.quantity, products.reorderLevel),
+        ),
+      )
+      .orderBy(asc(stockLevels.quantity));
+    return rows.map((r) => ({ ...r, currentStock: Number(r.currentStock) }));
   }),
 
   /* ------------------------------ OVERVIEW ------------------------------- */
-  overview: permissionProcedure("inventory.view").query(async () => {
+  overview: permissionProcedure("inventory.view").query(async ({ ctx }) => {
     const db = getDb();
+    // Valuation of the ACTIVE BRANCH's holdings (stock_levels), not the
+    // company-wide total — each branch sees the value on its own shelves.
+    const branchId = await workingBranchId(ctx.activeBranchId);
+    const branchQty =
+      branchId != null
+        ? sql<string>`COALESCE((SELECT sl.quantity FROM stock_levels sl WHERE sl.product_id = ${products.id} AND sl.branch_id = ${branchId}), 0)`
+        : sql<string>`${products.currentStock}`;
+
     const byCategory = await db
       .select({
         categoryId: categories.id,
         categoryName: categories.name,
         productCount: count(products.id),
-        totalCost: sql<number>`COALESCE(SUM(${products.currentStock} * ${products.costPrice}), 0)`,
-        totalRetail: sql<number>`COALESCE(SUM(${products.currentStock} * ${products.sellingPrice}), 0)`,
+        totalCost: sql<number>`COALESCE(SUM(${branchQty} * ${products.costPrice}), 0)`,
+        totalRetail: sql<number>`COALESCE(SUM(${branchQty} * ${products.sellingPrice}), 0)`,
       })
       .from(categories)
       .leftJoin(products, and(eq(products.categoryId, categories.id), eq(products.status, "ACTIVE")))
@@ -253,8 +290,8 @@ export const inventoryRouter = createRouter({
     const [totals] = await db
       .select({
         products: count(products.id),
-        cost: sql<number>`COALESCE(SUM(${products.currentStock} * ${products.costPrice}), 0)`,
-        retail: sql<number>`COALESCE(SUM(${products.currentStock} * ${products.sellingPrice}), 0)`,
+        cost: sql<number>`COALESCE(SUM(${branchQty} * ${products.costPrice}), 0)`,
+        retail: sql<number>`COALESCE(SUM(${branchQty} * ${products.sellingPrice}), 0)`,
       })
       .from(products)
       .where(eq(products.status, "ACTIVE"));
@@ -270,8 +307,9 @@ export const inventoryRouter = createRouter({
   }),
 
   /* ---------------------------- STOCK COUNTS ----------------------------- */
-  listCounts: permissionProcedure("inventory.stock_count").query(async () => {
+  listCounts: permissionProcedure("inventory.stock_count").query(async ({ ctx }) => {
     const db = getDb();
+    const scope = branchScope(stockCounts.branchId, ctx.activeBranch);
     return db
       .select({
         id: stockCounts.id,
@@ -284,6 +322,7 @@ export const inventoryRouter = createRouter({
       })
       .from(stockCounts)
       .leftJoin(users, eq(stockCounts.startedBy, users.id))
+      .where(scope)
       .orderBy(desc(stockCounts.startedAt))
       .limit(50);
   }),
@@ -293,20 +332,29 @@ export const inventoryRouter = createRouter({
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
       const reference = await nextReference("SC", "stock_counts");
+      const branchId = await workingBranchId(ctx.activeBranchId);
 
       const [countRow] = await db
         .insert(stockCounts)
-        .values({ reference, status: "IN_PROGRESS", notes: input.notes ?? null, startedBy: ctx.user.id })
+        .values({ reference, status: "IN_PROGRESS", notes: input.notes ?? null, startedBy: ctx.user.id, branchId })
         .$returningId();
 
-      // Snapshot expected balances for every active product
+      // Snapshot expected balances for every active product AT THIS BRANCH
+      // (0 where the branch has never stocked the product).
       const allProducts = await db.select().from(products).where(eq(products.status, "ACTIVE"));
+      const levels = branchId != null
+        ? await db
+            .select({ productId: stockLevels.productId, quantity: stockLevels.quantity })
+            .from(stockLevels)
+            .where(eq(stockLevels.branchId, branchId))
+        : [];
+      const levelByProduct = new Map(levels.map((l) => [l.productId, Number(l.quantity)]));
       if (allProducts.length) {
         await db.insert(stockCountItems).values(
           allProducts.map((p) => ({
             countId: countRow.id,
             productId: p.id,
-            expectedQty: p.currentStock,
+            expectedQty: levelByProduct.get(p.id) ?? 0,
           })),
         );
       }
@@ -324,13 +372,13 @@ export const inventoryRouter = createRouter({
 
   getCount: permissionProcedure("inventory.stock_count")
     .input(z.object({ id: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const countRows = await db
         .select({ count: stockCounts, startedByName: users.fullName })
         .from(stockCounts)
         .leftJoin(users, eq(stockCounts.startedBy, users.id))
-        .where(eq(stockCounts.id, input.id))
+        .where(and(eq(stockCounts.id, input.id), branchScope(stockCounts.branchId, ctx.activeBranch)))
         .limit(1);
       if (!countRows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Stock count not found." });
 
@@ -368,9 +416,13 @@ export const inventoryRouter = createRouter({
         ),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const db = getDb();
-      const countRow = await db.select().from(stockCounts).where(eq(stockCounts.id, input.countId)).limit(1);
+      const countRow = await db
+        .select()
+        .from(stockCounts)
+        .where(and(eq(stockCounts.id, input.countId), branchScope(stockCounts.branchId, ctx.activeBranch)))
+        .limit(1);
       if (!countRow[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Stock count not found." });
       if (countRow[0].status !== "IN_PROGRESS") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "This stock count is already closed." });
@@ -392,7 +444,11 @@ export const inventoryRouter = createRouter({
     .input(z.object({ countId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
       const db = getDb();
-      const countRow = await db.select().from(stockCounts).where(eq(stockCounts.id, input.countId)).limit(1);
+      const countRow = await db
+        .select()
+        .from(stockCounts)
+        .where(and(eq(stockCounts.id, input.countId), branchScope(stockCounts.branchId, ctx.activeBranch)))
+        .limit(1);
       if (!countRow[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Stock count not found." });
       if (countRow[0].status !== "IN_PROGRESS") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "This stock count is already closed." });
@@ -442,7 +498,13 @@ export const inventoryRouter = createRouter({
       await db
         .update(stockCounts)
         .set({ status: "CANCELLED", completedAt: new Date() })
-        .where(and(eq(stockCounts.id, input.countId), eq(stockCounts.status, "IN_PROGRESS")));
+        .where(
+          and(
+            eq(stockCounts.id, input.countId),
+            eq(stockCounts.status, "IN_PROGRESS"),
+            branchScope(stockCounts.branchId, ctx.activeBranch),
+          ),
+        );
       await logAudit({
         actorId: ctx.user.id,
         action: "inventory.count_cancel",
