@@ -80,7 +80,7 @@ function KpiGrid({ kpis }: { kpis: ReportKpi[] }) {
 
 /* -------------------------------- charts ------------------------------- */
 
-function AxisChart({ chart }: { chart: ReportChart }) {
+function AxisChart({ chart, width, height }: { chart: ReportChart; width?: number; height?: number }) {
   const series = chart.series ?? [];
   const yFormat = series.find((s) => s.format === "currency") ? "currency" : series[0]?.format;
   const common = (
@@ -101,7 +101,7 @@ function AxisChart({ chart }: { chart: ReportChart }) {
 
   if (chart.kind === "bar") {
     return (
-      <BarChart data={chart.data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+      <BarChart width={width} height={height} data={chart.data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
         {common}
         {series.map((s, i) => (
           <Bar key={s.key} dataKey={s.key} fill={s.color ?? CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} />
@@ -111,7 +111,7 @@ function AxisChart({ chart }: { chart: ReportChart }) {
   }
   if (chart.kind === "line") {
     return (
-      <LineChart data={chart.data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+      <LineChart width={width} height={height} data={chart.data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
         {common}
         {series.map((s, i) => (
           <Line key={s.key} type="monotone" dataKey={s.key} stroke={s.color ?? CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2.5} dot={false} />
@@ -120,7 +120,7 @@ function AxisChart({ chart }: { chart: ReportChart }) {
     );
   }
   return (
-    <AreaChart data={chart.data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+    <AreaChart width={width} height={height} data={chart.data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
       <defs>
         {series.map((s, i) => {
           const color = s.color ?? CHART_COLORS[i % CHART_COLORS.length];
@@ -147,10 +147,10 @@ function AxisChart({ chart }: { chart: ReportChart }) {
   );
 }
 
-function PieChartView({ chart }: { chart: ReportChart }) {
+function PieChartView({ chart, width, height }: { chart: ReportChart; width?: number; height?: number }) {
   const data = chart.data;
   return (
-    <PieChart>
+    <PieChart width={width} height={height}>
       <Pie data={data} dataKey={chart.valueKey ?? "value"} nameKey={chart.nameKey ?? "name"} innerRadius={55} outerRadius={95} paddingAngle={3}>
         {data.map((_, i) => (
           <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
