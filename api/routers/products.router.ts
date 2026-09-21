@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, asc, count, desc, eq, like, or, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, like, or, sql, type SQL } from "drizzle-orm";
 import { createRouter } from "../middleware";
 import { permissionProcedure } from "../trpc";
 import { getDb } from "../queries/connection";
 import { categories, productImages, products, stockMovements, suppliers, users } from "@db/schema";
-import { recordMovement } from "../services/inventory.service";
+import { getBranchBalance, recordMovement } from "../services/inventory.service";
+import { branchScope, getMainBranchId } from "../services/branch.service";
 import { isApprovalGated, submitApproval } from "../services/approvals.service";
 import { logAudit, requestMeta } from "../services/audit.service";
 import { MATERIAL_TYPES, PRODUCT_TYPES, UNITS } from "@contracts/constants";
@@ -14,7 +15,23 @@ import { MATERIAL_TYPES, PRODUCT_TYPES, UNITS } from "@contracts/constants";
  * HADRAN FABRICS MALL — products router
  * Full catalog CRUD. Manager create/edit/delete actions are routed through
  * the admin approval workflow; Admin/Super Admin apply immediately.
+ *
+ * The catalog itself (name, price, SKU…) is shared master data across the
+ * company, but STOCK is per-branch: every read also returns `branchStock`
+ * — the quantity physically held at the request's active branch — so the
+ * UI always shows the branch the staff member is working in.
  */
+
+/** Branch whose stock the request should see (active branch, MAIN as fallback). */
+async function stockBranchId(activeBranchId: number | null): Promise<number | null> {
+  return activeBranchId ?? (await getMainBranchId());
+}
+
+/** SELECT fragment: the product's quantity at one branch (0 when never stocked there). */
+function branchStockCol(branchId: number | null) {
+  if (branchId == null) return sql<string>`${products.currentStock}`;
+  return sql<string>`(SELECT COALESCE(SUM(sl.quantity), 0) FROM stock_levels sl WHERE sl.product_id = ${products.id} AND sl.branch_id = ${branchId})`;
+}
 
 /** Accepts absolute http(s) URLs and server-relative /uploads/... paths. */
 const imageUrl = z
@@ -103,8 +120,9 @@ export const productsRouter = createRouter({
         pageSize: z.number().int().min(5).max(100).default(15),
       }),
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
+      const branchId = await stockBranchId(ctx.activeBranchId);
       const conds: SQL[] = [];
       if (input.search) {
         conds.push(
@@ -124,7 +142,7 @@ export const productsRouter = createRouter({
 
       const [total] = await db.select({ value: count() }).from(products).where(where);
 
-      const items = await db
+      const rows = await db
         .select({
           id: products.id,
           sku: products.sku,
@@ -142,6 +160,7 @@ export const productsRouter = createRouter({
           taxExempt: products.taxExempt,
           discountEligible: products.discountEligible,
           currentStock: products.currentStock,
+          branchStock: branchStockCol(branchId),
           reorderLevel: products.reorderLevel,
           primaryImageUrl: products.primaryImageUrl,
           status: products.status,
@@ -155,14 +174,16 @@ export const productsRouter = createRouter({
         .limit(input.pageSize)
         .offset((input.page - 1) * input.pageSize);
 
+      const items = rows.map((p) => ({ ...p, branchStock: Number(p.branchStock) }));
       return { items, total: total?.value ?? 0, page: input.page, pageSize: input.pageSize };
     }),
 
   /* ----------------------------- DETAILS ------------------------------ */
   byId: permissionProcedure("products.view")
     .input(z.object({ id: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
+      const branchId = await stockBranchId(ctx.activeBranchId);
       const rows = await db
         .select({ product: products, categoryName: categories.name, supplierName: suppliers.name, creatorName: users.fullName })
         .from(products)
@@ -180,6 +201,10 @@ export const productsRouter = createRouter({
         .where(eq(productImages.productId, input.id))
         .orderBy(asc(productImages.sortOrder));
 
+      // Movement history of THIS branch only — branches are independent.
+      const movementConds: SQL[] = [eq(stockMovements.productId, input.id)];
+      const scope = branchScope(stockMovements.branchId, ctx.activeBranch);
+      if (scope) movementConds.push(scope);
       const movements = await db
         .select({
           id: stockMovements.id,
@@ -193,17 +218,18 @@ export const productsRouter = createRouter({
         })
         .from(stockMovements)
         .leftJoin(users, eq(stockMovements.performedBy, users.id))
-        .where(eq(stockMovements.productId, input.id))
+        .where(and(...movementConds))
         .orderBy(desc(stockMovements.createdAt))
         .limit(12);
 
-      return { ...row, images, movements };
+      const branchStock = branchId != null ? await getBranchBalance(input.id, branchId) : row.product.currentStock;
+      return { ...row, branchStock, images, movements };
     }),
 
   /* ------------------------- BARCODE LOOKUP (POS) ---------------------- */
   byBarcode: permissionProcedure("products.view")
     .input(z.object({ code: z.string().min(1).max(64) }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const rows = await db
         .select()
@@ -211,7 +237,9 @@ export const productsRouter = createRouter({
         .where(and(or(eq(products.barcode, input.code), eq(products.sku, input.code.toUpperCase())), eq(products.status, "ACTIVE")))
         .limit(1);
       if (!rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "No active product matches that code." });
-      return rows[0];
+      const branchId = await stockBranchId(ctx.activeBranchId);
+      const branchStock = branchId != null ? await getBranchBalance(rows[0].id, branchId) : rows[0].currentStock;
+      return { ...rows[0], branchStock };
     }),
 
   /* ----------------------------- SKU SUGGEST ---------------------------- */
@@ -245,7 +273,9 @@ export const productsRouter = createRouter({
         const requestId = await submitApproval({
           requestType: "PRODUCT_CREATE",
           entityType: "PRODUCT",
-          payload: input as unknown as Record<string, unknown>,
+          // branchId rides along so the approved opening stock lands in the
+          // branch the manager was working in (productDbValues allowlists it out).
+          payload: { ...input, branchId: ctx.activeBranchId } as unknown as Record<string, unknown>,
           summary: `Add new product "${input.name}" (${input.sku.toUpperCase()}) — ${input.sellingPrice} ₦/${input.unitOfMeasure.toLowerCase()}`,
           requesterId: ctx.user.id,
         });

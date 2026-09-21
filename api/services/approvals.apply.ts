@@ -2,7 +2,8 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { getDb } from "../queries/connection";
 import { approvalRequests, customers, productImages, products } from "@db/schema";
-import { recordMovement } from "./inventory.service";
+import { getBranchBalance, recordMovement } from "./inventory.service";
+import { getMainBranchId } from "./branch.service";
 import { voidSale } from "./sales-void.service";
 import { processReturn } from "./returns.service";
 import { logAudit } from "./audit.service";
@@ -143,8 +144,11 @@ export async function applyApproval(
       const found = await db.select().from(products).where(eq(products.id, productId)).limit(1);
       if (!found[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Product no longer exists." });
 
-      // Recompute the delta against the CURRENT balance (stock may have moved since).
-      const delta = Number((num(payload.newBalance) - found[0].currentStock).toFixed(3));
+      // Recompute the delta against the CURRENT balance AT THE REQUEST'S
+      // BRANCH (stock may have moved since the request was parked).
+      const adjBranchId = payload.branchId != null ? num(payload.branchId) : await getMainBranchId();
+      const branchBalance = adjBranchId != null ? await getBranchBalance(productId, adjBranchId) : found[0].currentStock;
+      const delta = Number((num(payload.newBalance) - branchBalance).toFixed(3));
       if (delta === 0) {
         return { description: `Stock of "${found[0].name}" already at ${payload.newBalance} — no movement needed.`, entityId: productId };
       }

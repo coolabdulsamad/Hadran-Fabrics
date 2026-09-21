@@ -12,7 +12,7 @@ import {
   startProductionRun,
 } from "../services/production.service";
 import { logAudit, requestMeta } from "../services/audit.service";
-import { branchScope } from "../services/branch.service";
+import { branchScope, getMainBranchId } from "../services/branch.service";
 import { PRODUCTION_STATUSES, UNITS } from "@contracts/constants";
 
 /**
@@ -132,7 +132,7 @@ export const productionRouter = createRouter({
 
   getById: permissionProcedure("production.view")
     .input(z.object({ id: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const db = getDb();
       const [row] = await db
         .select({
@@ -144,14 +144,20 @@ export const productionRouter = createRouter({
         .from(productionOrders)
         .leftJoin(products, eq(productionOrders.outputProductId, products.id))
         .leftJoin(users, eq(productionOrders.requestedBy, users.id))
-        .where(eq(productionOrders.id, input.id))
+        .where(and(eq(productionOrders.id, input.id), branchScope(productionOrders.branchId, ctx.activeBranch)))
         .limit(1);
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Production run not found." });
 
+      // Materials are consumed from the run's branch — show THAT branch's
+      // availability so the "enough stock to start?" check is branch-true.
+      const stockBranchId = row.run.branchId ?? ctx.activeBranchId ?? (await getMainBranchId());
       const materials = await db
         .select({
           material: productionMaterials,
-          currentStock: products.currentStock,
+          currentStock:
+            stockBranchId != null
+              ? sql<string>`COALESCE((SELECT sl.quantity FROM stock_levels sl WHERE sl.product_id = ${productionMaterials.productId} AND sl.branch_id = ${stockBranchId}), 0)`
+              : products.currentStock,
         })
         .from(productionMaterials)
         .leftJoin(products, eq(productionMaterials.productId, products.id))
