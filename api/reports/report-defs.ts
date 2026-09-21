@@ -776,7 +776,7 @@ const profitMargin: ReportDef = {
     const byProduct = groupBy === "product";
     const rows = await db
       .select({
-        key: byProduct ? saleItems.productName : categories.name,
+        groupKey: byProduct ? saleItems.productName : categories.name,
         quantity: sql<number>`COALESCE(SUM(${saleItems.quantity}), 0)`,
         revenue: sql<number>`COALESCE(SUM(${saleItems.lineTotal}), 0)`,
         cost: sql<number>`COALESCE(SUM(${saleItems.quantity} * ${saleItems.costPrice}), 0)`,
@@ -786,7 +786,9 @@ const profitMargin: ReportDef = {
       .innerJoin(products, eq(saleItems.productId, products.id))
       .innerJoin(categories, eq(products.categoryId, categories.id))
       .where(where)
-      .groupBy(sql`key`)
+      // NB: group by the real column — "key" is a reserved word in MySQL
+      // and grouping by select alias is rejected on strict servers.
+      .groupBy(byProduct ? saleItems.productName : categories.name)
       .orderBy(desc(sql`SUM(${saleItems.lineTotal})`))
       .limit(300);
 
@@ -795,7 +797,7 @@ const profitMargin: ReportDef = {
         const revenue = num(r.revenue);
         const cost = num(r.cost);
         const margin = revenue - cost;
-        return { name: r.key, quantity: num(r.quantity), revenue, cost, margin, marginPct: revenue > 0 ? (margin / revenue) * 100 : 0 };
+        return { name: r.groupKey, quantity: num(r.quantity), revenue, cost, margin, marginPct: revenue > 0 ? (margin / revenue) * 100 : 0 };
       })
       .filter((r) => r.revenue >= minRevenue);
 
